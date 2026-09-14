@@ -176,37 +176,46 @@ class _TVDebugPadState extends State<TVDebugPad> {
   );
 
   /// 编程式移动焦点到指定方向。
+  ///
+  /// 优先检查 [tvPlayerDebugActions]：播放页注册时，方向键直接走播放页的
+  /// seek/切集逻辑（播放页不用焦点导航）。否则走当前焦点所在 group 的
+  /// [FocusTraversalPolicy.inDirection]（TVFocusTraversalPolicy 几何查找）。
   void _move(TraversalDirection direction) {
-    final node = FocusManager.instance.primaryFocus;
-    if (node == null) return;
-    // 显式用 TVFocusTraversalPolicy 的几何查找，绕过 Flutter 默认遍历
-    final ctx = node.context;
-    if (ctx != null) {
-      final policy = FocusTraversalGroup.of(ctx);
-      if (policy is TVFocusTraversalPolicy) {
-        policy.inDirection(node, direction);
-        return;
+    final player = tvPlayerDebugActions;
+    if (player != null) {
+      switch (direction) {
+        case TraversalDirection.up:
+          player.onUp();
+          return;
+        case TraversalDirection.down:
+          player.onDown();
+          return;
+        case TraversalDirection.left:
+          player.onLeft();
+          return;
+        case TraversalDirection.right:
+          player.onRight();
+          return;
       }
     }
-    node.focusInDirection(direction);
+    final current = FocusManager.instance.primaryFocus;
+    if (current == null) return;
+    final policy = FocusTraversalGroup.of(current.context!);
+    policy.inDirection(current, direction);
   }
 
   /// 激活当前焦点节点（模拟遥控器 OK / Enter）。
+  ///
+  /// 播放页注册了 [tvPlayerDebugActions] 时，OK 直接走播放页的播放/暂停。
+  /// 否则用全局 [tvActivateSignal]：当前有焦点的 TVFocusable 监听并执行
+  /// onTap（合成按键注入在部分平台不可靠，改用信号驱动）。
   void _activate() {
-    final node = FocusManager.instance.primaryFocus;
-    if (node == null) return;
-    final ctx = node.context;
-    if (ctx != null) {
-      // 先查是否存在 ActivateIntent 的 action，避免焦点不在 TVFocusable 上时
-      // Actions.invoke 抛 "Unable to find an action" 异常。
-      final action = Actions.find<ActivateIntent>(ctx, intent: ActivateIntent());
-      if (action != null) {
-        Actions.invoke(ctx, ActivateIntent());
-        return;
-      }
+    final player = tvPlayerDebugActions;
+    if (player != null) {
+      player.onOk();
+      return;
     }
-    // 兑底：重新请求焦点（至少有视觉反馈）
-    node.requestFocus();
+    tvActivateSignal.value++;
   }
 }
 

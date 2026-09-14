@@ -10,6 +10,7 @@ import '../../app/app_controller.dart';
 import '../../app/theme.dart';
 import '../../domain/models/drama.dart';
 import '../../domain/models/preferences.dart';
+import '../../domain/models/remote_key_map.dart';
 import '../../playback/device_controls.dart';
 import '../../playback/media_kit_engine.dart';
 import '../../playback/playback_session.dart';
@@ -45,11 +46,12 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
   bool _foreground = true;
   bool _awake = false;
   bool _closing = false;
-  bool _controlsFocused = false; // 焦点是否在底部控件栏按钮上
-  final GlobalKey _controlsBarKey = GlobalKey();
   Timer? _hideTimer;
   // seek 预览
   Duration? _seekPreview;
+  // 边界提示（没有上/下集）
+  String? _edgeToast;
+  Timer? _edgeToastTimer;
 
   @override
   void initState() {
@@ -67,6 +69,50 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     unawaited(_prepareDevice());
     unawaited(_session.initialize(initialEpisode: widget.initialEpisode));
     _showControls();
+    // 注册调试悬浮面板动作：播放页不用焦点导航，方向键直接 seek/切集。
+    tvPlayerDebugActions = TVPlayerDebugActions(
+      onUp: () => _onRemoteDirection(RemoteAction.up),
+      onDown: () => _onRemoteDirection(RemoteAction.down),
+      onLeft: () => _onRemoteDirection(RemoteAction.left),
+      onRight: () => _onRemoteDirection(RemoteAction.right),
+      onOk: _togglePlay,
+    );
+  }
+
+  /// 调试悬浮面板方向键入口：复用真实遥控器的方向动作逻辑。
+  /// 与 [_onKey] 里的处理一致——控件隐藏时先唤出，可见时执行 seek/切集。
+  void _onRemoteDirection(RemoteAction action) {
+    if (_sheetOpen) return;
+    switch (action) {
+      case RemoteAction.left:
+        if (!_controlsVisible) {
+          _showControls();
+          return;
+        }
+        _seekBy(const Duration(seconds: -10));
+      case RemoteAction.right:
+        if (!_controlsVisible) {
+          _showControls();
+          return;
+        }
+        _seekBy(const Duration(seconds: 10));
+      case RemoteAction.up:
+        if (!_controlsVisible) {
+          _showControls();
+          return;
+        }
+        _changeEpisode(false);
+      case RemoteAction.down:
+        if (!_controlsVisible) {
+          _showControls();
+          return;
+        }
+        _changeEpisode(true);
+      case RemoteAction.ok:
+      case RemoteAction.back:
+      case RemoteAction.menu:
+        break;
+    }
   }
 
   Future<void> _prepareDevice() async {
@@ -91,6 +137,16 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
       _awake = awake;
       unawaited(_device.keepAwake(awake));
     }
+    // 关键修复：当播放状态从「非播放」变为「正在播放」时，主动（重新）启动
+    // 自动隐藏定时器。否则以下场景控件栏会卡住不隐藏：
+    //  - 初始化时 _showControls 在 playing=false 下调用，定时器到期不隐藏，
+    //    之后开始播放却没人再触发隐藏。
+    //  - 缓冲期间 playing 可能短暂为 false，定时器过期未隐藏，缓冲结束后
+    //    控件栏一直显示。
+    //  - 暂停→恢复，状态切换瞬间可能错过隐藏窗口。
+    if (_session.playing && !_session.buffering && !_sheetOpen) {
+      _ensureHideTimer();
+    }
     setState(() {});
   }
 
@@ -111,27 +167,35 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     _hideTimer?.cancel();
     _controlsVisible = true;
     if (mounted) setState(() {});
+    _ensureHideTimer();
+  }
+
+  /// 启动/重置自动隐藏定时器。仅在「正在播放 + 非缓冲 + 无 sheet + 无 seek 预览」
+  /// 时才会在到期后隐藏；否则不启动（由状态变化后再调本方法补上）。
+  void _ensureHideTimer() {
+    _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(seconds: 4), () {
       if (mounted &&
           !_closing &&
           _session.playing &&
+          !_session.buffering &&
           !_sheetOpen &&
-          _seekPreview == null &&
-          !_controlsFocused) {
+          _seekPreview == null) {
         setState(() => _controlsVisible = false);
       }
     });
   }
 
-  /// 焦点进入/离开控件栏时调用。
-  void _onControlsFocusChanged(bool focused) {
-    _controlsFocused = focused;
-    if (focused && !_controlsVisible) {
-      _showControls();
-    } else if (focused) {
-      // 焦点在控件栏时，取消自动隐藏
-      _hideTimer?.cancel();
-    }
+  /// 显示边界提示（没有上/下集），2 秒后自动消失。
+  void _showEdgeToast(String message) {
+    _edgeToast = message;
+    _edgeToastTimer?.cancel();
+    _edgeToastTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted && !_closing) {
+        setState(() => _edgeToast = null);
+      }
+    });
+    _showControls();
   }
 
   void _togglePlay() {
@@ -155,6 +219,9 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
         unawaited(_session.seek(_seekPreview!));
         _seekPreview = null;
         setState(() {});
+        // seek 预览结束：之前 _showControls 启动的隐藏定时器可能因
+        // _seekPreview != null 而未隐藏，这里补上。
+        if (_controlsVisible) _ensureHideTimer();
       }
     });
   }
@@ -163,8 +230,14 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
 
   void _changeEpisode(bool next) {
     if (_session.episodes.isEmpty) return;
-    if (next && !_session.canNext) return;
-    if (!next && !_session.canPrevious) return;
+    if (next && !_session.canNext) {
+      _showEdgeToast('没有下集了');
+      return;
+    }
+    if (!next && !_session.canPrevious) {
+      _showEdgeToast('没有上集了');
+      return;
+    }
     unawaited(next ? _session.next() : _session.previous());
     _showControls();
   }
@@ -204,7 +277,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
             _menuAction(context, Icons.grid_view_rounded, '选集', () {
               Navigator.of(context).pop();
               _openEpisodes();
-            }),
+            }, autofocus: true),
             _menuAction(
               context,
               _app.isFavorite(_session.drama.id)
@@ -271,12 +344,14 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     String label,
     VoidCallback onTap, {
     bool active = false,
+    bool autofocus = false,
   }) => Expanded(
     child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: TVFocusable(
         radius: 14,
         onTap: onTap,
+        autofocus: autofocus,
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
@@ -449,9 +524,13 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
   @override
   void dispose() {
     _closing = true;
+    if (tvPlayerDebugActions != null) {
+      tvPlayerDebugActions = null;
+    }
     WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
     _seekDebounce?.cancel();
+    _edgeToastTimer?.cancel();
     _session.removeListener(_sessionChanged);
     _session.dispose();
     unawaited(_device.dispose());
@@ -463,47 +542,29 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
     if (_sheetOpen) return KeyEventResult.ignored;
     final key = event.logicalKey;
+    final keyMap = _app.remoteKeyMap;
     // BACK / ESC → 退出
-    if (key == LogicalKeyboardKey.escape ||
-        key == LogicalKeyboardKey.goBack) {
+    if (keyMap.matches(RemoteAction.back, key)) {
       _exit();
       return KeyEventResult.handled;
     }
-    // MENU → 打开菜单
-    if (key == LogicalKeyboardKey.contextMenu ||
-        key == LogicalKeyboardKey.f1) {
+    // MENU（三条横岗等）→ 打开菜单
+    if (keyMap.matches(RemoteAction.menu, key)) {
       unawaited(_openMenu());
       return KeyEventResult.handled;
     }
-    // 焦点在控件栏按钮上时，方向键和 OK 交给 TVFocusable 处理（移动焦点 / 激活按钮）
-    if (_controlsFocused) {
-      // 仅处理上下：上键收起控件栏焦点回到视频区
-      if (key == LogicalKeyboardKey.arrowUp) {
-        // 离开控件栏，回到视频区（无焦点）
-        FocusScope.of(context).unfocus();
-        _showControls();
-        return KeyEventResult.handled;
-      }
-      // 左右/OK/ENTER/SPACE 由 TVFocusable 自行处理
-      return KeyEventResult.ignored;
-    }
-    // 以下：焦点不在控件栏（视频区无焦点）
-    // OK/ENTER/SPACE → 播放暂停
-    if (key == LogicalKeyboardKey.select ||
-        key == LogicalKeyboardKey.enter ||
-        key == LogicalKeyboardKey.space) {
-      if (!_controlsVisible) {
-        _showControls();
-        return KeyEventResult.handled;
-      }
+    // OK/ENTER/SPACE → 播放/暂停（同时确保控件可见）
+    if (keyMap.matches(RemoteAction.ok, key)) {
       _togglePlay();
       return KeyEventResult.handled;
     }
-    // 左右 → seek 10s
-    if (key == LogicalKeyboardKey.arrowLeft) {
+    // 左 → 快退 10s
+    if (keyMap.matches(RemoteAction.left, key)) {
       if (!_controlsVisible) {
         _showControls();
         return KeyEventResult.handled;
@@ -511,7 +572,8 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
       _seekBy(const Duration(seconds: -10));
       return KeyEventResult.handled;
     }
-    if (key == LogicalKeyboardKey.arrowRight) {
+    // 右 → 快进 10s
+    if (keyMap.matches(RemoteAction.right, key)) {
       if (!_controlsVisible) {
         _showControls();
         return KeyEventResult.handled;
@@ -519,16 +581,22 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
       _seekBy(const Duration(seconds: 10));
       return KeyEventResult.handled;
     }
-    // 下 → 显示控件栏并聚焦到播放按钮
-    if (key == LogicalKeyboardKey.arrowDown) {
-      _showControls();
-      // 聚焦到控件栏（播放按钮 autofocus）
-      _requestControlsFocus();
+    // 上 → 上一集（到顶提示）
+    if (keyMap.matches(RemoteAction.up, key)) {
+      if (!_controlsVisible) {
+        _showControls();
+        return KeyEventResult.handled;
+      }
+      _changeEpisode(false);
       return KeyEventResult.handled;
     }
-    // 上 → 显示控件
-    if (key == LogicalKeyboardKey.arrowUp) {
-      _showControls();
+    // 下 → 下一集（到底提示）
+    if (keyMap.matches(RemoteAction.down, key)) {
+      if (!_controlsVisible) {
+        _showControls();
+        return KeyEventResult.handled;
+      }
+      _changeEpisode(true);
       return KeyEventResult.handled;
     }
     // 媒体键
@@ -546,20 +614,6 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
-  }
-
-  /// 请求焦点进入控件栏。
-  void _requestControlsFocus() {
-    final scope = _controlsBarKey.currentContext;
-    if (scope != null) {
-      final node = FocusScope.of(scope);
-      node.requestFocus();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          node.traversalChildren.firstOrNull?.requestFocus();
-        }
-      });
-    }
   }
 
   @override
@@ -725,6 +779,29 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                       ),
                     ),
                   ),
+                // 边界提示（没有上/下集）
+                if (_edgeToast != null)
+                  IgnorePointer(
+                    child: Center(
+                      child: _glass(
+                        radius: 20,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 28,
+                            vertical: 14,
+                          ),
+                          child: Text(
+                            _edgeToast!,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 // 顶部信息栏 + 底部控件栏
                 if (_controlsVisible && !_sheetOpen) ...[
                   Positioned(
@@ -805,25 +882,18 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     );
   }
 
-  Widget _bottomControls(double fraction) => Focus(
-    key: _controlsBarKey,
-    canRequestFocus: false,
-    descendantsAreFocusable: true,
-    onFocusChange: _onControlsFocusChanged,
-    child: FocusTraversalGroup(
-      policy: TVFocusTraversalPolicy(),
-      child: Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.bottomCenter,
-          end: Alignment.topCenter,
-          colors: [Color(0xCC000000), Colors.transparent],
-        ),
+  Widget _bottomControls(double fraction) => Container(
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.bottomCenter,
+        end: Alignment.topCenter,
+        colors: [Color(0xCC000000), Colors.transparent],
       ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(32, 40, 32, 16),
+    ),
+    child: SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(32, 40, 32, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -862,7 +932,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
               ],
             ),
             const SizedBox(height: 16),
-            // 控件按钮行
+            // 控件按钮行（纯展示 + 鼠标可点击，不参与 D-pad 焦点）
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -885,7 +955,6 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
                   _session.playing ? '暂停' : '播放',
                   _togglePlay,
                   big: true,
-                  autofocus: true,
                 ),
                 const SizedBox(width: 20),
                 _ctrlButton(
@@ -911,8 +980,6 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
         ),
       ),
     ),
-      ),
-    ),
   );
 
   Widget _ctrlButton(
@@ -920,12 +987,8 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     String label,
     VoidCallback? onTap, {
     bool big = false,
-    bool autofocus = false,
-  }) => TVFocusable(
-    radius: big ? 42 : 14,
+  }) => GestureDetector(
     onTap: onTap,
-    autofocus: autofocus,
-    enableGlow: big,
     child: Container(
       padding: EdgeInsets.all(big ? 18 : 12),
       decoration: BoxDecoration(

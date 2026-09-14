@@ -16,8 +16,10 @@ import 'tv_search_screen.dart';
 /// 复用 LibraryScreen 的数据逻辑（channel/tag/filter/order），
 /// UI 改为 TV 适配：所有可交互元素用 TVFocusable 包裹，D-pad 可操作。
 class TVLibraryScreen extends StatefulWidget {
-  const TVLibraryScreen({super.key, required this.onPlay});
+  const TVLibraryScreen({super.key, required this.onPlay, required this.searchFocus});
   final void Function(Drama drama, [int? episode]) onPlay;
+  /// 顶部搜索框的焦点节点，由 TVAppShell 统一持有。
+  final FocusNode searchFocus;
   @override
   State<TVLibraryScreen> createState() => _TVLibraryScreenState();
 }
@@ -126,7 +128,7 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                                   TVSearchScreen(onPlay: widget.onPlay),
                             ),
                           ),
-                          autofocus: true,
+                          focusNode: widget.searchFocus,
                           semanticLabel: '搜索',
                           child: Container(
                             padding: const EdgeInsets.symmetric(
@@ -176,16 +178,17 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                                         scrollDirection: Axis.horizontal,
                                         child: Row(
                                           children: [
-                                            _category(null, '综合'),
+                                            _category(null, '综合', role: 'firstCategory'),
                                             for (final channel
                                                 in DramaChannel.values)
-                                              _category(channel, channel.label),
+                                              _category(channel, channel.label, role: 'category'),
                                           ],
                                         ),
                                       ),
                                     ),
                                     TVFocusable(
                                       radius: 20,
+                                      focusRole: 'filter',
                                       onTap: () =>
                                           _openFilters(popularTags.toList()),
                                       child: Padding(
@@ -229,14 +232,16 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                                     scrollDirection: Axis.horizontal,
                                     child: Row(
                                       children: [
-                                        for (final tag in popularTags.take(12))
+                                        for (int i = 0; i < popularTags.length && i < 12; i++)
                                           Padding(
                                             padding:
                                                 const EdgeInsets.only(right: 8),
                                             child: _TVTagPill(
-                                              tag,
-                                              selected: _tags.contains(tag),
+                                              popularTags.elementAt(i),
+                                              selected: _tags.contains(popularTags.elementAt(i)),
+                                              role: i == 0 ? 'firstTag' : 'tag',
                                               onTap: () => setState(() {
+                                                final tag = popularTags.elementAt(i);
                                                 if (!_tags.add(tag)) {
                                                   _tags.remove(tag);
                                                 }
@@ -320,6 +325,7 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                             final drama = items[index];
                             return TVFocusable(
                               radius: 16,
+                              focusRole: index == 0 ? 'firstGridCard' : null,
                               onTap: () => widget.onPlay(drama),
                               onLongPress: () => showDramaDetail(
                                 context,
@@ -388,12 +394,13 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
     );
   }
 
-  Widget _category(DramaChannel? value, String label) {
+  Widget _category(DramaChannel? value, String label, {String? role}) {
     final selected = _channel == value;
     return Padding(
       padding: const EdgeInsets.only(right: 4),
       child: TVFocusable(
         radius: 8,
+        focusRole: role,
         onTap: () => setState(() {
           _channel = value;
           _tags.clear();
@@ -434,6 +441,7 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
       child: TVFocusable(
         radius: 16,
+        focusRole: 'continueWatching',
         onTap: () => widget.onPlay(record.drama),
         child: Material(
           color: context.colors.surface,
@@ -524,21 +532,39 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
           footer: Row(
             children: [
               Expanded(
-                child: OutlinedButton(
-                  onPressed: () => update(() {
+                child: TVFocusable(
+                  radius: 10,
+                  borderWidth: 1.5,
+                  onTap: () => update(() {
                     draftTags.clear();
                     status = null;
                     shortOnly = false;
                     order = CatalogOrder.recommended;
                   }),
-                  child: const Text('重置'),
+                  child: Container(
+                    height: 44,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: context.muted.withValues(alpha: .4)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '重置',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: context.colors.onSurface,
+                      ),
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 flex: 2,
-                child: FilledButton(
-                  onPressed: () {
+                child: TVFocusable(
+                  radius: 10,
+                  onTap: () {
                     setState(() {
                       _tags = draftTags;
                       _status = status;
@@ -547,7 +573,22 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                     });
                     Navigator.of(context).pop();
                   },
-                  child: const Text('确定'),
+                  child: Container(
+                    height: 44,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: context.colors.primary,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '确定',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: context.colors.onPrimary,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -560,11 +601,13 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  for (final tag in tags)
+                  for (int i = 0; i < tags.length; i++)
                     _TVTagPill(
-                      tag,
-                      selected: draftTags.contains(tag),
+                      tags.elementAt(i),
+                      selected: draftTags.contains(tags.elementAt(i)),
+                      role: i == 0 ? 'filterFirstTag' : null,
                       onTap: () => update(() {
+                        final tag = tags.elementAt(i);
                         if (!draftTags.add(tag)) draftTags.remove(tag);
                       }),
                     ),
@@ -639,13 +682,15 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
 
 /// TV 版 TagPill：复用 TagPill 视觉，外层包 TVFocusable。
 class _TVTagPill extends StatelessWidget {
-  const _TVTagPill(this.label, {required this.selected, required this.onTap});
+  const _TVTagPill(this.label, {required this.selected, required this.onTap, this.role});
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final String? role;
   @override
   Widget build(BuildContext context) => TVFocusable(
     radius: 30,
+    focusRole: role,
     onTap: onTap,
     child: TagPill(label, selected: selected),
   );

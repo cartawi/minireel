@@ -22,6 +22,11 @@ import 'desktop/window_chrome.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // TV/低端设备图片缓存调优：默认 1000 张/100MB 在盒子上偏小且易抖动，
+  // 调到 200 张/80MB，配合 CoverImage 的 cacheWidth 解码缩放，
+  // 减少滚动时反复解码大图的开销。
+  PaintingBinding.instance.imageCache.maximumSize = 200;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 80 * 1024 * 1024;
   LicenseRegistry.addLicense(() async* {
     yield LicenseEntryWithLineBreaks([
       'MiniReel',

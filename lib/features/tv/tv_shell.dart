@@ -27,6 +27,13 @@ class TVAppShell extends StatefulWidget {
 class _TVAppShellState extends State<TVAppShell> {
   int _tab = 0;
   bool _openingPlayer = false;
+  /// 顶部搜索框的焦点节点：由 shell 统一持有，用于
+  /// 1) 初始焦点落在搜索框（而非导航栏）
+  /// 2) 从导航栏按→进入内容区时统一落到搜索框
+  final _searchFocus = FocusNode(debugLabel: 'tv-shell-search');
+  /// 内容区的焦点节点：切 tab 后用于把焦点从导航栏移到内容区。
+  /// canRequestFocus=false，只作为遍历入口（requestFocus 后遍历其子节点）。
+  final _contentScope = FocusNode(debugLabel: 'tv-shell-content-scope');
 
   Future<void> _play(Drama drama, [int? episode]) async {
     if (_openingPlayer) return;
@@ -52,9 +59,66 @@ class _TVAppShellState extends State<TVAppShell> {
   @override
   void initState() {
     super.initState();
+    // 注册搜索框节点供导航栏→内容区跳转使用
+    searchFocusNode = _searchFocus;
+    // 初始内容区入口：短剧库的搜索框
+    contentEntryFocusNode = _searchFocus;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(AppScope.read(context).repository.refresh());
+      if (!mounted) return;
+      // 默认焦点：进入后红点在顶部搜索框
+      _searchFocus.requestFocus();
+      unawaited(AppScope.read(context).repository.refresh());
     });
+  }
+
+  @override
+  void dispose() {
+    searchFocusNode = null;
+    contentEntryFocusNode = null;
+    _searchFocus.dispose();
+    _contentScope.dispose();
+    super.dispose();
+  }
+
+  /// 切换 tab 并把焦点移到内容区。
+  ///
+  /// 导航项 onTap 调用。切 tab 后焦点若留在导航栏，用户按→会触发
+  /// TVFocusTraversalPolicy 的「导航栏→内容区」特判，落到
+  /// [contentEntryFocusNode]。这里在切 tab 时同步更新该入口节点，
+  /// 并主动把焦点收到内容区，避免焦点留在导航栏。
+  void _selectTab(int tab) {
+    setState(() => _tab = tab);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _applyContentEntry(tab);
+    });
+  }
+
+  /// 根据当前 tab 设置内容区入口节点并把焦点收到内容区。
+  ///
+  /// - 短剧库：入口 = 搜索框（[_searchFocus]）
+  /// - 我的：入口 = segment「收藏」节点（角色 `mineEntry`）
+  /// - 设置：入口 = 首个设置项节点（角色 `settingsEntry`）
+  ///
+  /// 用 [TVFocusRegistry] 角色查找而非 [findFirstFocus]，后者会遍历
+  /// IndexedStack 所有子页（含隐藏 tab），返回 widget 树首个节点
+  /// （短剧库搜索框），在「我的/设置」tab 会落到不可见节点。
+  void _applyContentEntry(int tab) {
+    if (tab == 0) {
+      contentEntryFocusNode = _searchFocus;
+      _searchFocus.requestFocus();
+      return;
+    }
+    final role = tab == 1 ? 'mineEntry' : 'settingsEntry';
+    final entry = TVFocusRegistry.get(role);
+    if (entry != null && entry.rect.width > 0) {
+      contentEntryFocusNode = entry;
+      entry.requestFocus();
+      return;
+    }
+    // 兜底：直接请求内容区 scope
+    contentEntryFocusNode = _contentScope;
+    _contentScope.requestFocus();
   }
 
   @override
@@ -66,11 +130,13 @@ class _TVAppShellState extends State<TVAppShell> {
         child: Row(
           children: [
             // 导航栏独立焦点区：D-pad 在导航项间上下移动，右键进入内容区
+            // 右键统一落到顶部搜索框（由 TVFocusTraversalPolicy 特判处理）
             FocusTraversalGroup(
+              key: navRegionKey,
               policy: TVFocusTraversalPolicy(),
               child: _TVNavigation(
                 selected: _tab,
-                onSelect: (tab) => setState(() => _tab = tab),
+                onSelect: _selectTab,
               ),
             ),
             Expanded(
@@ -81,18 +147,23 @@ class _TVAppShellState extends State<TVAppShell> {
                   ),
                 ),
                 // 内容区独立焦点区（二维，允许上下左右）
-                child: FocusTraversalGroup(
-                  policy: TVFocusTraversalPolicy(),
-                  child: IndexedStack(
-                    index: _tab,
-                    children: [
-                      TVLibraryScreen(onPlay: _play),
-                      TVMineScreen(
-                        onPlay: _play,
-                        onExplore: () => setState(() => _tab = 0),
-                      ),
-                      TVSettingsScreen(),
-                    ],
+                child: Focus(
+                  focusNode: _contentScope,
+                  canRequestFocus: false,
+                  descendantsAreFocusable: true,
+                  child: FocusTraversalGroup(
+                    policy: TVFocusTraversalPolicy(),
+                    child: IndexedStack(
+                      index: _tab,
+                      children: [
+                        TVLibraryScreen(onPlay: _play, searchFocus: _searchFocus),
+                        TVMineScreen(
+                          onPlay: _play,
+                          onExplore: () => _selectTab(0),
+                        ),
+                        TVSettingsScreen(),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -107,7 +178,10 @@ class _TVAppShellState extends State<TVAppShell> {
 
 /// TV 侧边导航栏。图标 + 文字标签（TV 10 尺距离需文字辅助）。
 class _TVNavigation extends StatelessWidget {
-  const _TVNavigation({required this.selected, required this.onSelect});
+  const _TVNavigation({
+    required this.selected,
+    required this.onSelect,
+  });
   final int selected;
   final ValueChanged<int> onSelect;
 
@@ -155,7 +229,8 @@ class _TVNavigation extends StatelessWidget {
       child: TVFocusable(
         radius: 13,
         onTap: () => onSelect(index),
-        autofocus: index == 0,
+        // 默认焦点交给内容区顶部搜索框（TVLibraryScreen 内 autofocus: true），
+        // 导航栏不抢初始焦点；D-pad 左键可从内容区进入导航栏。
         semanticLabel: label,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),

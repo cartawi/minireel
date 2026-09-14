@@ -4,8 +4,10 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../app/app_controller.dart';
 import '../../app/theme.dart';
 import '../../domain/models/preferences.dart';
+import '../../domain/models/remote_key_map.dart';
 import '../shared/widgets.dart';
 import 'tv_focus.dart';
+import 'tv_remote_key_settings.dart';
 
 /// TV 版设置页。
 /// 复用 SettingsScreen 的核心设置项，省略 TV 不适用的项（手势灵敏度）。
@@ -56,6 +58,16 @@ class _TVSettingsScreenState extends State<TVSettingsScreen> {
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
                   children: [
+                  _group(context, '遥控器', [
+                    _navRow(
+                      context,
+                      Icons.settings_remote_rounded,
+                      '按键映射',
+                      _remoteKeyLabel(app),
+                      () => showRemoteKeySettings(context),
+                      focusRole: 'settingsEntry',
+                    ),
+                  ]),
                   _group(context, '主题', [
                     _navRow(
                       context,
@@ -90,6 +102,16 @@ class _TVSettingsScreenState extends State<TVSettingsScreen> {
                       prefs.rememberProgress,
                       (v) => app.setPreferences(
                         prefs.copyWith(rememberProgress: v),
+                      ),
+                    ),
+                    _switchRow(
+                      context,
+                      Icons.download_done_rounded,
+                      '优先缓存下一集',
+                      '当前集缓存完成后自动预加载下一集，切换更顺滑',
+                      prefs.prefetchNextEpisode,
+                      (v) => app.setPreferences(
+                        prefs.copyWith(prefetchNextEpisode: v),
                       ),
                     ),
                     _navRow(
@@ -218,10 +240,12 @@ class _TVSettingsScreenState extends State<TVSettingsScreen> {
     IconData icon,
     String title,
     String value,
-    VoidCallback? onTap,
-  ) => TVFocusable(
+    VoidCallback? onTap, {
+    String? focusRole,
+  }) => TVFocusable(
     radius: 16,
     onTap: onTap,
+    focusRole: focusRole,
     child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
@@ -371,4 +395,16 @@ class _TVSettingsScreenState extends State<TVSettingsScreen> {
   }
 
   String _mb(int bytes) => (bytes / 1024 / 1024).toStringAsFixed(1);
+
+  /// 遥控器映射行的副标题：显示是否已自定义。
+  String _remoteKeyLabel(AppController app) {
+    final map = app.remoteKeyMap;
+    final custom = app.preferences.remoteKeyMap;
+    if (custom == null) return '默认';
+    // 统计已绑定的动作数
+    final bound = RemoteAction.values
+        .where((a) => map.countOf(a) > 0)
+        .length;
+    return '已自定义 $bound/7';
+  }
 }

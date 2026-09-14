@@ -44,28 +44,23 @@ class _TVMineScreenState extends State<TVMineScreen> {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
-          child: FocusTraversalGroup(
-            policy: TVFocusTraversalPolicy(),
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: context.chipColor,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                children: [
-                  _segment('收藏${app.favorites.isEmpty ? '' : ' ${app.favorites.length}'}', 0),
-                  _segment('历史${app.history.isEmpty ? '' : ' ${app.history.length}'}', 1),
-                ],
-              ),
+          child: Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: context.chipColor,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                _segment('收藏${app.favorites.isEmpty ? '' : ' ${app.favorites.length}'}', 0),
+                _segment('历史${app.history.isEmpty ? '' : ' ${app.history.length}'}', 1),
+              ],
             ),
           ),
         ),
         Expanded(
-          child: FocusTraversalGroup(
-            policy: TVFocusTraversalPolicy(),
-            child: list.isEmpty
-              ? EmptyState(
+          child: list.isEmpty
+            ? EmptyState(
                   icon: _tab == 0
                       ? Icons.favorite_border_rounded
                       : Icons.history_rounded,
@@ -73,6 +68,15 @@ class _TVMineScreenState extends State<TVMineScreen> {
                   subtitle: _tab == 0 ? '收藏短剧，下次打开就能接着看' : '观看记录会自动保存，精彩随时继续',
                   action: '去发现短剧',
                   onAction: widget.onExplore,
+                  actionBuilder: (label, onTap) => TVFocusable(
+                    radius: 24,
+                    focusRole: 'mineEmptyAction',
+                    onTap: onTap,
+                    child: FilledButton(
+                      onPressed: onTap,
+                      child: Text(label),
+                    ),
+                  ),
                 )
               : _tab == 0
               ? LayoutBuilder(
@@ -87,6 +91,7 @@ class _TVMineScreenState extends State<TVMineScreen> {
                       final record = app.historyOf(drama.id);
                       return TVFocusable(
                         radius: 16,
+                        focusRole: index == 0 ? 'mineFirstCard' : null,
                         onTap: () => widget.onPlay(drama),
                         onLongPress: () => _confirmRemove(
                           app,
@@ -127,6 +132,7 @@ class _TVMineScreenState extends State<TVMineScreen> {
                       padding: const EdgeInsets.only(bottom: 10),
                       child: TVFocusable(
                         radius: 16,
+                        focusRole: index == 0 ? 'mineFirstCard' : null,
                         onTap: () => widget.onPlay(record.drama),
                         onLongPress: () => _confirmRemove(
                           app,
@@ -204,7 +210,6 @@ class _TVMineScreenState extends State<TVMineScreen> {
                     );
                   },
                 ),
-          ),
         ),
       ],
     );
@@ -215,6 +220,7 @@ class _TVMineScreenState extends State<TVMineScreen> {
       radius: 11,
       onTap: () => setState(() => _tab = tab),
       autofocus: tab == 0,
+      focusRole: tab == 0 ? 'mineEntry' : 'mineEntry2',
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 11),
         decoration: BoxDecoration(

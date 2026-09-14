@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/theme.dart';
 import '../../app/platform.dart';
 import '../../domain/models/drama.dart';
+import '../tv/tv_focus.dart';
 
 int dramaColumns(double width) => isWindowsDesktop
     ? ((width - 28) / 190).floor().clamp(2, 10)
@@ -76,9 +77,13 @@ class CoverImage extends StatelessWidget {
       ),
     );
     if (drama.coverUrl.isEmpty) return placeholder();
+    // TV/低端设备性能优化：按显示尺寸解码，避免把原图(可达 800×1200)整张
+    // 解码进内存。卡片显示宽约 175 逻辑像素，按 2x DPR 给 350 像素足够清晰，
+    // 内存占用降一个数量级，解码也更快。
     return Image.network(
       drama.coverUrl,
       fit: fit,
+      cacheWidth: 350,
       excludeFromSemantics: true,
       gaplessPlayback: true,
       errorBuilder: (_, _, _) => placeholder(),
@@ -346,12 +351,15 @@ Future<T?> showReelSheet<T>(
         backgroundColor: dark ? const Color(0xFF171A22) : null,
         constraints: const BoxConstraints(maxWidth: 540),
         clipBehavior: Clip.antiAlias,
-        child: dark
-            ? Theme(
-                data: ReelTheme.make(Brightness.dark),
-                child: Builder(builder: builder),
-              )
-            : Builder(builder: builder),
+        child: FocusTraversalGroup(
+          policy: TVFocusTraversalPolicy(),
+          child: dark
+              ? Theme(
+                  data: ReelTheme.make(Brightness.dark),
+                  child: Builder(builder: builder),
+                )
+              : Builder(builder: builder),
+        ),
       ),
     );
   }
@@ -442,15 +450,7 @@ class SheetFrame extends StatelessWidget {
                       ],
                     ),
                   ),
-                  IconButton(
-                    tooltip: '关闭',
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: Icon(
-                      Icons.close_rounded,
-                      size: 20,
-                      color: context.muted,
-                    ),
-                  ),
+                  _CloseButton(),
                 ],
               ),
             ),
@@ -473,6 +473,41 @@ class SheetFrame extends StatelessWidget {
   );
 }
 
+/// Sheet 右上角关闭按钮：TV 上用 TVFocusable 提供红框焦点 + 辉光，
+/// 手机/桌面上退化为普通 IconButton。
+class _CloseButton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    if (isAndroidTV) {
+      return TVFocusable(
+        radius: 10,
+        borderWidth: 2,
+        focusRole: 'sheetClose',
+        autofocus: true,
+        onTap: () => Navigator.of(context).pop(),
+        semanticLabel: '关闭',
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(
+            Icons.close_rounded,
+            size: 20,
+            color: context.muted,
+          ),
+        ),
+      );
+    }
+    return IconButton(
+      tooltip: '关闭',
+      onPressed: () => Navigator.of(context).pop(),
+      icon: Icon(
+        Icons.close_rounded,
+        size: 20,
+        color: context.muted,
+      ),
+    );
+  }
+}
+
 /// TV 上 sheet 打开时自动聚焦首个可遍历子节点（TVFocusable）。
 /// 手机/桌面无副作用。
 class _SheetAutofocus extends StatefulWidget {
@@ -492,7 +527,15 @@ class _SheetAutofocusState extends State<_SheetAutofocus> {
           final scope = FocusScope.of(context);
           scope.requestFocus();
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) scope.traversalChildren.firstOrNull?.requestFocus();
+            if (!mounted) return;
+            // 若已有节点持焦点（如某个 TVFocusable 设了 autofocus），保留它；
+            // 否则聚焦首个可遍历子节点。
+            final primary = FocusManager.instance.primaryFocus;
+            if (primary == null ||
+                primary == scope ||
+                !scope.children.any((n) => n.hasFocus)) {
+              scope.traversalChildren.firstOrNull?.requestFocus();
+            }
           });
         }
       });

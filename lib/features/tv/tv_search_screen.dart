@@ -7,6 +7,7 @@ import '../../app/theme.dart';
 import '../../core/errors/app_exception.dart';
 import '../../domain/models/discovery.dart';
 import '../../domain/models/drama.dart';
+import '../../domain/models/remote_key_map.dart';
 import '../shared/widgets.dart';
 import 'tv_focus.dart';
 
@@ -21,7 +22,7 @@ class TVSearchScreen extends StatefulWidget {
 
 class _TVSearchScreenState extends State<TVSearchScreen> {
   final _query = TextEditingController();
-  final _focusNode = FocusNode();
+  final _focusNode = FocusNode(debugLabel: 'tv-search-field');
   final _resultsKey = GlobalKey();
   CancelToken? _token;
   int _generation = 0;
@@ -32,13 +33,21 @@ class _TVSearchScreenState extends State<TVSearchScreen> {
   @override
   void initState() {
     super.initState();
+    TVFocusRegistry.register('searchField', _focusNode);
+    // 进入搜索页即聚焦输入框并弹出虚拟键盘。
+    // _focusNode 直接传给 TextField，requestFocus 会让内部 EditableText
+    // 获焦并连接 IME，TV 端软键盘随之弹出。
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focusNode.requestFocus();
+      if (!mounted) return;
+      _focusNode.requestFocus();
+      // TV 端保险：显式请求显示输入法，避免某些 TV ROM 不自动弹键盘。
+      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
     });
   }
 
   @override
   void dispose() {
+    TVFocusRegistry.unregister('searchField', _focusNode);
     _token?.cancel();
     _query.dispose();
     _focusNode.dispose();
@@ -126,28 +135,55 @@ class _TVSearchScreenState extends State<TVSearchScreen> {
   Widget build(BuildContext context) {
     final app = AppScope.watch(context);
     final canRemote = app.repository.canSearchRemote;
+    // 搜索框获焦时拦截方向键：
+    // - ↓：有搜索历史→落到第一个历史；无→抖动不下落。
+    // - →：跳到“搜索”按钮（无搜索按钮则跳“取消”），不留在输入框移动光标。
+    _focusNode.onKeyEvent = (node, event) {
+      if (event is! KeyDownEvent) return KeyEventResult.ignored;
+      final key = event.logicalKey;
+      if (app.remoteKeyMap.matches(RemoteAction.down, key)) {
+        final firstHistory = TVFocusRegistry.get('searchHistoryFirst');
+        print('[TV-Search-Down] firstHistory=${firstHistory?.debugLabel} rect=${firstHistory?.rect}');
+        if (firstHistory != null && firstHistory.rect.width > 0) {
+          _focusNode.unfocus();
+          firstHistory.requestFocus();
+          return KeyEventResult.handled;
+        }
+        // 无搜索历史：抖动反馈，不下落。
+        tvShakeSignal.value++;
+        return KeyEventResult.handled;
+      }
+      if (app.remoteKeyMap.matches(RemoteAction.right, key)) {
+        final target = TVFocusRegistry.get('searchButton') ??
+            TVFocusRegistry.get('cancelButton');
+        if (target != null && target.rect.width > 0) {
+          _focusNode.unfocus();
+          target.requestFocus();
+          return KeyEventResult.handled;
+        }
+      }
+      // ←/↑：阻止框架默认 traversal 下落到搜索历史/结果区。
+      // TextField 内部 EditableText 会先处理光标移动（返回 handled），
+      // 只有光标在边界时才到这里——返回 handled 阻止下落。
+      if (app.remoteKeyMap.matches(RemoteAction.left, key) ||
+          app.remoteKeyMap.matches(RemoteAction.up, key)) {
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    };
     return Scaffold(
       body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 16, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Focus(
-                      focusNode: _focusNode,
-                      onKeyEvent: (node, event) {
-                        if (event is KeyDownEvent &&
-                            event.logicalKey ==
-                                LogicalKeyboardKey.arrowDown) {
-                          _focusNode.unfocus();
-                          _focusResults();
-                          return KeyEventResult.handled;
-                        }
-                        return KeyEventResult.ignored;
-                      },
+        child: FocusTraversalGroup(
+          policy: TVFocusTraversalPolicy(),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 16, 8),
+                child: Row(
+                  children: [
+                    Expanded(
                       child: TextField(
+                        focusNode: _focusNode,
                       controller: _query,
                       textInputAction: TextInputAction.search,
                       onChanged: (_) => _changed(),
@@ -183,12 +219,12 @@ class _TVSearchScreenState extends State<TVSearchScreen> {
                         ),
                       ),
                     ),
-                    ),
                   ),
                   const SizedBox(width: 8),
                   if (canRemote)
                     TVFocusable(
                       radius: 14,
+                      focusRole: 'searchButton',
                       onTap: _loading || _query.text.trim().isEmpty
                           ? null
                           : _search,
@@ -205,6 +241,7 @@ class _TVSearchScreenState extends State<TVSearchScreen> {
                     ),
                   TVFocusable(
                     radius: 14,
+                    focusRole: 'cancelButton',
                     onTap: () => Navigator.of(context).pop(),
                     child: const Padding(
                       padding: EdgeInsets.symmetric(
@@ -290,14 +327,15 @@ class _TVSearchScreenState extends State<TVSearchScreen> {
                           spacing: 10,
                           runSpacing: 12,
                           children: [
-                            for (final text in app.searches)
+                            for (int i = 0; i < app.searches.length; i++)
                               TVFocusable(
                                 radius: 30,
+                                focusRole: i == 0 ? 'searchHistoryFirst' : 'searchHistory',
                                 onTap: () {
-                                  _setQuery(text);
+                                  _setQuery(app.searches.elementAt(i));
                                   _search();
                                 },
-                                child: TagPill(text),
+                                child: TagPill(app.searches.elementAt(i)),
                               ),
                           ],
                         ),
@@ -377,6 +415,7 @@ class _TVSearchScreenState extends State<TVSearchScreen> {
               ),
             ),
           ],
+        ),
         ),
       ),
     );

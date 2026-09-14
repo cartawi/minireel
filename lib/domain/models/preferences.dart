@@ -1,3 +1,5 @@
+import 'remote_key_map.dart';
+
 enum AppAppearance { system, light, dark }
 
 enum RailSide { right, left }
@@ -20,6 +22,8 @@ final class Preferences {
     this.gestureHintSeen = false,
     this.pauseWhenMinimized = true,
     this.desktopVolume = .75,
+    this.prefetchNextEpisode = true,
+    this.remoteKeyMap,
   });
 
   final AppAppearance appearance;
@@ -34,6 +38,9 @@ final class Preferences {
   final bool gestureHintSeen;
   final bool pauseWhenMinimized;
   final double desktopVolume;
+  final bool prefetchNextEpisode;
+  /// 遥控器按键映射。null 表示用默认映射（未自定义）。
+  final RemoteKeyMap? remoteKeyMap;
 
   Preferences copyWith({
     AppAppearance? appearance,
@@ -48,6 +55,8 @@ final class Preferences {
     bool? gestureHintSeen,
     bool? pauseWhenMinimized,
     double? desktopVolume,
+    bool? prefetchNextEpisode,
+    RemoteKeyMap? remoteKeyMap,
   }) => Preferences(
     appearance: appearance ?? this.appearance,
     speed: speed ?? this.speed,
@@ -61,6 +70,8 @@ final class Preferences {
     gestureHintSeen: gestureHintSeen ?? this.gestureHintSeen,
     pauseWhenMinimized: pauseWhenMinimized ?? this.pauseWhenMinimized,
     desktopVolume: desktopVolume ?? this.desktopVolume,
+    prefetchNextEpisode: prefetchNextEpisode ?? this.prefetchNextEpisode,
+    remoteKeyMap: remoteKeyMap ?? this.remoteKeyMap,
   );
 
   Map<String, dynamic> toJson() => {
@@ -76,6 +87,8 @@ final class Preferences {
     'gestureHintSeen': gestureHintSeen,
     'pauseWhenMinimized': pauseWhenMinimized,
     'desktopVolume': desktopVolume,
+    'prefetchNextEpisode': prefetchNextEpisode,
+    if (remoteKeyMap != null) 'remoteKeyMap': remoteKeyMap!.toJson(),
   };
 
   factory Preferences.fromJson(Map<String, dynamic> json) => Preferences(
@@ -102,5 +115,9 @@ final class Preferences {
         json['desktopVolume'] is num && (json['desktopVolume'] as num).isFinite
         ? (json['desktopVolume'] as num).toDouble().clamp(0, 1)
         : .75,
+    prefetchNextEpisode: json['prefetchNextEpisode'] != false,
+    remoteKeyMap: json['remoteKeyMap'] is Map
+        ? RemoteKeyMap.fromJson(json['remoteKeyMap'] as Map<String, dynamic>)
+        : null,
   );
 }

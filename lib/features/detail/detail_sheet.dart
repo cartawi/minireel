@@ -4,11 +4,13 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/app_controller.dart';
+import '../../app/platform.dart';
 import '../../app/theme.dart';
 import '../../core/errors/app_exception.dart';
 import '../../domain/models/drama.dart';
 import '../shared/widgets.dart';
 import '../shared/drama_metadata.dart';
+import '../tv/tv_focus.dart';
 
 Future<void> showDramaDetail(
   BuildContext context,
@@ -100,28 +102,59 @@ class _DetailSheetState extends State<_DetailSheet> {
       footer: Row(
         children: [
           Expanded(
-            child: OutlinedButton.icon(
-              onPressed: () => app.toggleFavorite(drama),
-              icon: Icon(
-                favorite
-                    ? Icons.favorite_rounded
-                    : Icons.favorite_border_rounded,
-                size: 19,
-              ),
-              label: Text(favorite ? '已收藏' : '收藏'),
-              style: OutlinedButton.styleFrom(minimumSize: const Size(48, 50)),
-            ),
+            child: isAndroidTV
+                ? TVFocusable(
+                    radius: 14,
+                    onTap: () => app.toggleFavorite(drama),
+                    child: OutlinedButton.icon(
+                      onPressed: null,
+                      icon: Icon(
+                        favorite
+                            ? Icons.favorite_rounded
+                            : Icons.favorite_border_rounded,
+                        size: 19,
+                      ),
+                      label: Text(favorite ? '已收藏' : '收藏'),
+                      style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(48, 50)),
+                    ),
+                  )
+                : OutlinedButton.icon(
+                    onPressed: () => app.toggleFavorite(drama),
+                    icon: Icon(
+                      favorite
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      size: 19,
+                    ),
+                    label: Text(favorite ? '已收藏' : '收藏'),
+                    style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(48, 50)),
+                  ),
           ),
           const SizedBox(width: 12),
           Expanded(
             flex: 2,
-            child: FilledButton.icon(
-              onPressed: _play,
-              icon: const Icon(Icons.play_arrow_rounded),
-              label: Text(
-                record == null ? '立即播放' : '继续第 ${record.episodeIndex} 集',
-              ),
-            ),
+            child: isAndroidTV
+                ? TVFocusable(
+                    radius: 14,
+                    autofocus: true,
+                    onTap: _play,
+                    child: FilledButton.icon(
+                      onPressed: null,
+                      icon: const Icon(Icons.play_arrow_rounded),
+                      label: Text(
+                        record == null ? '立即播放' : '继续第 ${record.episodeIndex} 集',
+                      ),
+                    ),
+                  )
+                : FilledButton.icon(
+                    onPressed: _play,
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: Text(
+                      record == null ? '立即播放' : '继续第 ${record.episodeIndex} 集',
+                    ),
+                  ),
           ),
         ],
       ),
@@ -259,6 +292,30 @@ class EpisodeGrid extends StatelessWidget {
         itemBuilder: (context, index) {
           final episode = episodes[index];
           final selected = current == episode.index;
+          if (isAndroidTV) {
+            return TVFocusable(
+              radius: 12,
+              onTap: () => onSelect(episode),
+              autofocus: selected,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: selected ? context.colors.primary : context.chipColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    '${episode.index}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: selected ? Colors.white : context.colors.onSurface,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }
           return Semantics(
             label: episode.title,
             selected: selected,

@@ -14,25 +14,60 @@ import '../features/mine/mine_screen.dart';
 import '../features/player/player_screen.dart';
 import '../features/player/desktop_player_screen.dart';
 import '../features/settings/settings_screen.dart';
+import '../features/tv/tv_shell.dart';
+import '../features/tv/tv_player_screen.dart';
+import '../features/tv/tv_debug_pad.dart';
 import 'app_controller.dart';
 import 'theme.dart';
 import 'platform.dart';
 
-class MiniReelApp extends StatelessWidget {
+class MiniReelApp extends StatefulWidget {
   const MiniReelApp({super.key, required this.controller});
   final AppController controller;
 
   @override
+  State<MiniReelApp> createState() => _MiniReelAppState();
+}
+
+class _MiniReelAppState extends State<MiniReelApp> {
+  final _rootFocus = FocusNode(debugLabel: 'mini-reel-root');
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _rootFocus.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _rootFocus.dispose();
+    super.dispose();
+  }
+
+  KeyEventResult _onRootKey(FocusNode node, KeyEvent event) {
+    // F9：调试时切换强制 TV 模式（用键盘方向键模拟遥控器）
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.f9) {
+      toggleDebugTvMode();
+      setState(() {});
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  @override
   Widget build(BuildContext context) => AppScope(
-    controller: controller,
+    controller: widget.controller,
     child: ListenableBuilder(
-      listenable: controller,
+      listenable: widget.controller,
       builder: (context, _) => MaterialApp(
         title: 'MiniReel',
         debugShowCheckedModeBanner: false,
         theme: ReelTheme.make(Brightness.light),
         darkTheme: ReelTheme.make(Brightness.dark),
-        themeMode: switch (controller.preferences.appearance) {
+        themeMode: switch (widget.controller.preferences.appearance) {
           AppAppearance.system => ThemeMode.system,
           AppAppearance.light => ThemeMode.light,
           AppAppearance.dark => ThemeMode.dark,
@@ -44,10 +79,11 @@ class MiniReelApp extends StatelessWidget {
           final media = MediaQuery.of(context);
           final scale =
               media.textScaler.scale(1) *
-              (controller.preferences.largeText ? 1.18 : 1);
+              (widget.controller.preferences.largeText ? 1.18 : 1);
           return MediaQuery(
             data: media.copyWith(textScaler: TextScaler.linear(scale)),
-            child: isWindowsDesktop
+            child: TVDebugPad(
+              child: isWindowsDesktop
                 ? ListenableBuilder(
                     listenable: DesktopWindow.instance,
                     child: child,
@@ -62,9 +98,14 @@ class MiniReelApp extends StatelessWidget {
                     ),
                   )
                 : child!,
+            ),
           );
         },
-        home: const _AppShell(),
+        home: Focus(
+          focusNode: _rootFocus,
+          onKeyEvent: _onRootKey,
+          child: const _AppShell(),
+        ),
       ),
     ),
   );
@@ -93,9 +134,11 @@ class _AppShellState extends State<_AppShell> {
     try {
       await Navigator.of(context).push(
         PageRouteBuilder<void>(
-          pageBuilder: (_, _, _) => isWindowsDesktop
-              ? DesktopPlayerScreen(drama: drama, initialEpisode: episode)
-              : PlayerScreen(drama: drama, initialEpisode: episode),
+          pageBuilder: (_, _, _) => isAndroidTV
+              ? TVPlayerScreen(drama: drama, initialEpisode: episode)
+              : (isWindowsDesktop
+                  ? DesktopPlayerScreen(drama: drama, initialEpisode: episode)
+                  : PlayerScreen(drama: drama, initialEpisode: episode)),
           transitionDuration: const Duration(milliseconds: 240),
           reverseTransitionDuration: const Duration(milliseconds: 200),
           transitionsBuilder: (_, animation, _, child) => FadeTransition(
@@ -174,21 +217,21 @@ class _AppShellState extends State<_AppShell> {
       child: Scaffold(
         body: SafeArea(
           bottom: false,
-          child: isWindowsDesktop
-              ? Row(
-                  children: [
-                    DesktopNavigation(
-                      selected: _tab,
-                      onSelect: (tab) => setState(() => _tab = tab),
-                    ),
-                    Expanded(child: content),
-                  ],
-                )
-              : content,
+          child: isAndroidTV
+              ? const TVAppShell()
+              : (isWindowsDesktop
+                  ? Row(
+                      children: [
+                        DesktopNavigation(
+                          selected: _tab,
+                          onSelect: (tab) => setState(() => _tab = tab),
+                        ),
+                        Expanded(child: content),
+                      ],
+                    )
+                  : content),
         ),
-        bottomNavigationBar: isWindowsDesktop
-            ? null
-            : Container(
+        bottomNavigationBar: isAndroidTV || isWindowsDesktop ? null : Container(
                 decoration: BoxDecoration(
                   color: context.colors.surface,
                   border: Border(

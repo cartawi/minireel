@@ -6,6 +6,8 @@ import '../../domain/models/drama.dart';
 
 int dramaColumns(double width) => isWindowsDesktop
     ? ((width - 28) / 190).floor().clamp(2, 10)
+    : isAndroidTV
+    ? ((width - 28) / 175).floor().clamp(4, 8)
     : width >= 1100
     ? 5
     : width >= 800
@@ -328,7 +330,8 @@ Future<T?> showReelSheet<T>(
   required WidgetBuilder builder,
   bool dark = false,
 }) {
-  if (isWindowsDesktop) {
+  // TV 与桌面都走居中 Dialog（横屏大屏，底部 sheet 体验差）
+  if (isWindowsDesktop || isAndroidTV) {
     return showDialog<T>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: .5),
@@ -375,14 +378,15 @@ class SheetFrame extends StatelessWidget {
   final Widget? footer;
   final double maxHeight;
   @override
-  Widget build(BuildContext context) => SafeArea(
-    top: false,
-    child: ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * maxHeight,
-      ),
-      child: Padding(
-        padding: EdgeInsets.only(
+  Widget build(BuildContext context) => _SheetAutofocus(
+    child: SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * maxHeight,
+        ),
+        child: Padding(
+          padding: EdgeInsets.only(
           bottom: MediaQuery.viewInsetsOf(context).bottom,
         ),
         child: Column(
@@ -458,7 +462,38 @@ class SheetFrame extends StatelessWidget {
         ),
       ),
     ),
+    ),
   );
+}
+
+/// TV 上 sheet 打开时自动聚焦首个可遍历子节点（TVFocusable）。
+/// 手机/桌面无副作用。
+class _SheetAutofocus extends StatefulWidget {
+  const _SheetAutofocus({required this.child});
+  final Widget child;
+  @override
+  State<_SheetAutofocus> createState() => _SheetAutofocusState();
+}
+
+class _SheetAutofocusState extends State<_SheetAutofocus> {
+  @override
+  void initState() {
+    super.initState();
+    if (isAndroidTV) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          final scope = FocusScope.of(context);
+          scope.requestFocus();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) scope.traversalChildren.firstOrNull?.requestFocus();
+          });
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 Future<T?> pickOption<T>(

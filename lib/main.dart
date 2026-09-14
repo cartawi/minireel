@@ -9,6 +9,7 @@ import 'package:media_kit/media_kit.dart';
 
 import 'app/app.dart';
 import 'app/app_controller.dart';
+import 'app/platform.dart';
 import 'app/theme.dart';
 import 'core/config/source_config.dart';
 import 'core/network/app_http_client.dart';
@@ -26,9 +27,11 @@ Future<void> main() async {
       'MiniReel',
     ], await rootBundle.loadString('License'));
   });
+  initDebugTvFromEnv();
   if (Platform.isWindows) await DesktopWindow.instance.initialize();
   MediaKit.ensureInitialized();
-  if (Platform.isAndroid) {
+  await detectAndroidTv();
+  if (Platform.isAndroid && !isAndroidTV) {
     unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
   }
   runApp(const MiniReelBootstrap());

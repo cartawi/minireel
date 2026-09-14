@@ -52,7 +52,7 @@ class _TVSettingsScreenState extends State<TVSettingsScreen> {
             ),
             Expanded(
               child: FocusTraversalGroup(
-                policy: OrderedTraversalPolicy(),
+                policy: TVFocusTraversalPolicy(),
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
                   children: [

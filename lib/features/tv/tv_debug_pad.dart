@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/platform.dart';
+import 'tv_focus.dart';
 
 /// 调试用虚拟遥控器悬浮面板（仅 debug 生效，release 完全不渲染）。
 ///
@@ -178,6 +179,15 @@ class _TVDebugPadState extends State<TVDebugPad> {
   void _move(TraversalDirection direction) {
     final node = FocusManager.instance.primaryFocus;
     if (node == null) return;
+    // 显式用 TVFocusTraversalPolicy 的几何查找，绕过 Flutter 默认遍历
+    final ctx = node.context;
+    if (ctx != null) {
+      final policy = FocusTraversalGroup.of(ctx);
+      if (policy is TVFocusTraversalPolicy) {
+        policy.inDirection(node, direction);
+        return;
+      }
+    }
     node.focusInDirection(direction);
   }
 
@@ -187,9 +197,13 @@ class _TVDebugPadState extends State<TVDebugPad> {
     if (node == null) return;
     final ctx = node.context;
     if (ctx != null) {
-      // 通过 Actions 激活（TVFocusable 注册了 ActivateIntent → onTap）
-      final handled = Actions.invoke(ctx, ActivateIntent());
-      if (handled == true) return;
+      // 先查是否存在 ActivateIntent 的 action，避免焦点不在 TVFocusable 上时
+      // Actions.invoke 抛 "Unable to find an action" 异常。
+      final action = Actions.find<ActivateIntent>(ctx, intent: ActivateIntent());
+      if (action != null) {
+        Actions.invoke(ctx, ActivateIntent());
+        return;
+      }
     }
     // 兑底：重新请求焦点（至少有视觉反馈）
     node.requestFocus();

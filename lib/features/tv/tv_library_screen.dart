@@ -102,8 +102,9 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
         return Column(
           children: [
             // 顶部栏：搜索 + 分类 + 筛选（独立焦点区，与瀑布流隔离）
+            // 顶部栏整体水平方向遍历（搜索/分类/标签都是横向排列）
             FocusTraversalGroup(
-              policy: OrderedTraversalPolicy(),
+              policy: TVFocusTraversalPolicy(),
               child: Container(
                 decoration: BoxDecoration(
                   color: Theme.of(context).scaffoldBackgroundColor,
@@ -261,7 +262,7 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                 canRequestFocus: false,
                 descendantsAreFocusable: true,
                 child: FocusTraversalGroup(
-                policy: OrderedTraversalPolicy(),
+                policy: TVFocusTraversalPolicy(),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     if (repo.catalog.isEmpty && repo.refreshing) {
@@ -287,6 +288,14 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                               unawaited(repo.refresh());
                             }
                           },
+                          actionBuilder: (label, onTap) => TVFocusable(
+                            radius: 24,
+                            onTap: onTap,
+                            child: FilledButton(
+                              onPressed: onTap,
+                              child: Text(label),
+                            ),
+                          ),
                         ),
                       ],
                     );
@@ -332,6 +341,7 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                                   drama,
                                   widget.onPlay,
                                 ),
+                                interactive: false,
                               ),
                             );
                           },

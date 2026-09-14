@@ -59,14 +59,15 @@ class _TVAppShellState extends State<TVAppShell> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return TVDpadInterceptor(
+      child: Scaffold(
       body: Container(
         color: Theme.of(context).scaffoldBackgroundColor,
         child: Row(
           children: [
             // 导航栏独立焦点区：D-pad 在导航项间上下移动，右键进入内容区
             FocusTraversalGroup(
-              policy: OrderedTraversalPolicy(),
+              policy: TVFocusTraversalPolicy(),
               child: _TVNavigation(
                 selected: _tab,
                 onSelect: (tab) => setState(() => _tab = tab),
@@ -79,9 +80,9 @@ class _TVAppShellState extends State<TVAppShell> {
                     left: BorderSide(color: Theme.of(context).dividerColor),
                   ),
                 ),
-                // 内容区独立焦点区
+                // 内容区独立焦点区（二维，允许上下左右）
                 child: FocusTraversalGroup(
-                  policy: OrderedTraversalPolicy(),
+                  policy: TVFocusTraversalPolicy(),
                   child: IndexedStack(
                     index: _tab,
                     children: [
@@ -98,6 +99,7 @@ class _TVAppShellState extends State<TVAppShell> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

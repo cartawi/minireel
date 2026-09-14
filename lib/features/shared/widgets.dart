@@ -99,6 +99,7 @@ class DramaCard extends StatelessWidget {
     this.selected = false,
     this.selecting = false,
     this.footer,
+    this.interactive = true,
   });
   final Drama drama;
   final VoidCallback onTap;
@@ -108,6 +109,9 @@ class DramaCard extends StatelessWidget {
   final bool selected;
   final bool selecting;
   final Widget? footer;
+  /// 是否响应触摸点击。TV 版由外层 TVFocusable 接管点击时设为 false，
+  /// InkWell 仅保留水波纹视觉，不再独立触发 onTap（避免双重点击）。
+  final bool interactive;
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -118,9 +122,9 @@ class DramaCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        onSecondaryTap: isWindowsDesktop ? onLongPress : null,
+        onTap: interactive ? onTap : null,
+        onLongPress: interactive ? onLongPress : null,
+        onSecondaryTap: interactive && isWindowsDesktop ? onLongPress : null,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -271,10 +275,12 @@ class EmptyState extends StatelessWidget {
     this.subtitle,
     this.action,
     this.onAction,
+    this.actionBuilder,
   });
   final IconData icon;
   final String title;
   final String? subtitle;
+  final Widget Function(String action, VoidCallback? onAction)? actionBuilder;
   final String? action;
   final VoidCallback? onAction;
   @override
@@ -317,7 +323,8 @@ class EmptyState extends StatelessWidget {
           ],
           if (action != null) ...[
             const SizedBox(height: 20),
-            FilledButton(onPressed: onAction, child: Text(action!)),
+            actionBuilder?.call(action!, onAction) ??
+                FilledButton(onPressed: onAction, child: Text(action!)),
           ],
         ],
       ),

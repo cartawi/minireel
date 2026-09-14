@@ -45,7 +45,7 @@ class _TVMineScreenState extends State<TVMineScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
           child: FocusTraversalGroup(
-            policy: OrderedTraversalPolicy(),
+            policy: TVFocusTraversalPolicy(),
             child: Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
@@ -63,7 +63,7 @@ class _TVMineScreenState extends State<TVMineScreen> {
         ),
         Expanded(
           child: FocusTraversalGroup(
-            policy: OrderedTraversalPolicy(),
+            policy: TVFocusTraversalPolicy(),
             child: list.isEmpty
               ? EmptyState(
                   icon: _tab == 0
@@ -103,6 +103,7 @@ class _TVMineScreenState extends State<TVMineScreen> {
                             {drama.id},
                             _tab == 0,
                           ),
+                          interactive: false,
                           footer: record == null
                               ? null
                               : Text(

@@ -811,7 +811,7 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
     descendantsAreFocusable: true,
     onFocusChange: _onControlsFocusChanged,
     child: FocusTraversalGroup(
-      policy: OrderedTraversalPolicy(),
+      policy: TVFocusTraversalPolicy(),
       child: Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(

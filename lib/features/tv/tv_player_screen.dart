@@ -638,14 +638,28 @@ class _TVPlayerScreenState extends State<TVPlayerScreen>
             child: Stack(
               fit: StackFit.expand,
               children: [
-                // 视频层
-                Video(
-                  controller: _engine.video,
-                  fit: BoxFit.contain,
-                  controls: NoVideoControls,
-                  pauseUponEnteringBackgroundMode: false,
-                  resumeUponEnteringForegroundMode: false,
-                  wakelock: false,
+                // 视频层：用 videoChanges 监听引擎切换（预加载 promote 时
+                // activeEngine 换成 standby 引擎，controller 引用变化），
+                // 否则 Video widget 会停留在已 retire 的旧 controller 上黑屏。
+                ValueListenableBuilder<int>(
+                  valueListenable: _engine.videoChanges,
+                  builder: (context, _, _) {
+                    final controller = _engine.video;
+                    return Video(
+                      // key 随 controller 变化：media_kit 的 Video 在 didUpdateWidget
+                      // 里不重新绑定 controller（只在 initState 绑定一次），
+                      // 引擎 promote 后 controller 引用变了但 State 会复用旧
+                      // controller（已 dispose）→ 黑屏。用 ObjectKey 强制重建
+                      // State，新 State 绑定新 controller。
+                      key: ObjectKey(controller),
+                      controller: controller,
+                      fit: BoxFit.contain,
+                      controls: NoVideoControls,
+                      pauseUponEnteringBackgroundMode: false,
+                      resumeUponEnteringForegroundMode: false,
+                      wakelock: false,
+                    );
+                  },
                 ),
                 // 加载/缓冲指示
                 if (_session.loadingDetail || _session.buffering)

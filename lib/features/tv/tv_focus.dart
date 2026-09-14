@@ -475,10 +475,12 @@ class TVFocusTraversalPolicy extends FocusTraversalPolicy {
     final next = _findInDirection(currentNode, direction);
     if (next != null) {
       next.requestFocus();
-      // 确保焦点节点滚动到可视区（TV 遥控器移动焦点后必须自动跟随）
+      // 确保焦点节点滚动到可视区（TV 遥控器移动焦点后必须自动跟随）。
+      // 用即时跳转而非动画：焦点本身已有 200ms 缩放/边框动画做反馈，
+      // 滚动再动画会与网格重布局叠加导致掉帧（低端盒子尤甚）。
       final ctx = next.context;
       if (ctx != null) {
-        Scrollable.ensureVisible(ctx, alignment: 0.1, duration: const Duration(milliseconds: 200));
+        Scrollable.ensureVisible(ctx, alignment: 0.1);
       }
       return true;
     }

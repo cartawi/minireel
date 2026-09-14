@@ -5,6 +5,7 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/theme.dart';
+import '../../data/repositories/drama_repository.dart';
 import '../../domain/models/drama.dart';
 import '../../domain/models/catalog_order.dart';
 import '../detail/detail_sheet.dart';
@@ -35,11 +36,61 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
   final _contentFocus = FocusNode(debugLabel: 'tv-library-content');
   /// 焦点是否在下方网格区（true 时折叠二级分类 + 热门标签行，腾出高度给网格）。
   bool _gridFocused = false;
+  /// 缓存的筛选结果：避免每次 build 都全量 filter+sort。
+  /// 仅在 catalog 长度变化（loadMore/refresh）或筛选条件变化时重算。
+  List<Drama> _cachedItems = const [];
+  List<String> _cachedPopularTags = const [];
+  int _cachedCatalogLength = -1;
+  String? _cachedFilterSignature;
   bool get _filtered =>
       _tags.isNotEmpty ||
       _status != null ||
       _shortOnly ||
       _order != CatalogOrder.recommended;
+
+  /// 筛选条件签名：任一筛选状态变化时改变，用于判断缓存是否失效。
+  String get _filterSignature =>
+      '${_channel?.name}|${_tags.toList()..sort()}|$_status|$_shortOnly|${_order.name}';
+
+  /// 按需重算筛选结果。catalog 长度或筛选条件变化时才重算，
+  /// 焦点切换等不触发 repository、不改筛选的 build 直接命中缓存。
+  void _ensureItemsComputed(DramaRepository repo) {
+    final catalogLength = repo.catalog.length;
+    final sig = _filterSignature;
+    if (catalogLength == _cachedCatalogLength && sig == _cachedFilterSignature) {
+      return;
+    }
+    _cachedCatalogLength = catalogLength;
+    _cachedFilterSignature = sig;
+    final available = repo.catalog
+        .where((drama) => _channel == null || drama.channel == _channel)
+        .toList();
+    final items = available
+        .where(
+          (drama) =>
+              (_tags.isEmpty || _tags.any((tag) => drama.matches(tag))) &&
+              (_status == null || drama.releaseStatus == _status) &&
+              (!_shortOnly ||
+                  drama.episodeCount > 0 && drama.episodeCount <= 60),
+        )
+        .toList();
+    if (_order == CatalogOrder.title) {
+      items.sort((a, b) => a.title.compareTo(b.title));
+    }
+    if (_order == CatalogOrder.short) {
+      items.sort((a, b) => a.episodeCount.compareTo(b.episodeCount));
+    }
+    final popularTags = <String>{..._tags};
+    for (final drama in available) {
+      popularTags.addAll(drama.tags.where((tag) => tag.length <= 6));
+      if (popularTags.length >= 12) break;
+    }
+    if (popularTags.isEmpty) {
+      popularTags.addAll(['甜宠', '逆袭', '复仇', '穿越', '热血', '治愈', '玄幻']);
+    }
+    _cachedItems = items;
+    _cachedPopularTags = popularTags.toList();
+  }
 
   @override
   void initState() {
@@ -75,32 +126,9 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
       listenable: app.repository,
       builder: (context, _) {
         final repo = app.repository;
-        final available = repo.catalog
-            .where((drama) => _channel == null || drama.channel == _channel)
-            .toList();
-        final items = available
-            .where(
-              (drama) =>
-                  (_tags.isEmpty || _tags.any((tag) => drama.matches(tag))) &&
-                  (_status == null || drama.releaseStatus == _status) &&
-                  (!_shortOnly ||
-                      drama.episodeCount > 0 && drama.episodeCount <= 60),
-            )
-            .toList();
-        if (_order == CatalogOrder.title) {
-          items.sort((a, b) => a.title.compareTo(b.title));
-        }
-        if (_order == CatalogOrder.short) {
-          items.sort((a, b) => a.episodeCount.compareTo(b.episodeCount));
-        }
-        final popularTags = <String>{..._tags};
-        for (final drama in available) {
-          popularTags.addAll(drama.tags.where((tag) => tag.length <= 6));
-          if (popularTags.length >= 12) break;
-        }
-        if (popularTags.isEmpty) {
-          popularTags.addAll(['甜宠', '逆袭', '复仇', '穿越', '热血', '治愈', '玄幻']);
-        }
+        _ensureItemsComputed(repo);
+        final items = _cachedItems;
+        final popularTags = _cachedPopularTags;
         return Column(
           children: [
             // 顶部栏：搜索 + 分类 + 筛选（独立焦点区，与瀑布流隔离）

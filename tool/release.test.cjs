@@ -26,7 +26,7 @@ test('release assembly rejects missing assets and writes verifiable checksums', 
   fs.mkdirSync(source);
   for (const flavor of ['phone', 'tv']) {
     for (const abi of ['arm64-v8a', 'armeabi-v7a', 'x86_64']) {
-      fs.writeFileSync(path.join(source, `app-${flavor}-${abi}-release.apk`), `signed ${flavor} ${abi}`);
+      fs.writeFileSync(path.join(source, `app-${abi}-${flavor}-release.apk`), `signed ${flavor} ${abi}`);
     }
   }
   collectApks('1.2.3', source, release, 'phone');
@@ -59,7 +59,7 @@ test('APK collection rejects missing, empty and unspecified flavors', t => {
   }
   for (const flavor of ['phone', 'tv']) {
     assert.throws(() => collectApks('1.2.3', directory, destination, flavor), /Missing or empty/);
-    fs.writeFileSync(path.join(directory, `app-${flavor}-arm64-v8a-release.apk`), '');
+    fs.writeFileSync(path.join(directory, `app-arm64-v8a-${flavor}-release.apk`), '');
     assert.throws(() => collectApks('1.2.3', directory, destination, flavor), /Missing or empty/);
   }
 });

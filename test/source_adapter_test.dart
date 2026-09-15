@@ -300,7 +300,7 @@ void main() {
     },
   );
 
-  test('cancelled web resolve never sends fallback request', () async {
+  test('already cancelled resolve sends no requests', () async {
     final token = CancelToken()..cancel();
     final client = _Client()..respond = (_) async => throw token.cancelError!;
     await expectLater(
@@ -310,6 +310,26 @@ void main() {
       ).resolvePlayback(drama, episode, cancelToken: token),
       throwsA(isA<DioException>()),
     );
-    expect(client.calls.length, 1);
+    expect(client.calls, isEmpty);
   });
+
+  test(
+    'cancellation during web resolve never sends fallback request',
+    () async {
+      final token = CancelToken();
+      final client = _Client()
+        ..respond = (_) async {
+          token.cancel();
+          throw token.cancelError!;
+        };
+      await expectLater(
+        HongguoAdapter(
+          config,
+          client,
+        ).resolvePlayback(drama, episode, cancelToken: token),
+        throwsA(isA<DioException>()),
+      );
+      expect(client.calls.map((uri) => uri.path), ['/player/100/202']);
+    },
+  );
 }

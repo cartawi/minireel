@@ -34,41 +34,43 @@ void main() {
         engine: engine,
         drama: sampleDrama,
       );
-      addTearDown(() async {
+      try {
+        await session.initialize();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump();
+        expect(resolved, [1, 2]);
+        expect(engine.preloadedEpisodeId, sampleEpisodes[1].id);
+        expect(players[1].opened, ['/2.mp4']);
+        expect(players[1].state.value.playing, isFalse);
+        await session.next();
+        expect(resolved, [1, 2]);
+        expect(engine.activeEngine, same(players[1]));
+        expect(players[1].opened, ['/2.mp4']);
+        expect(session.playing, isTrue);
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump();
+        expect(engine.preloadedEpisodeId, sampleEpisodes[2].id);
+        session.hold('background');
+        await tester.pump();
+        expect(engine.preloadedEpisodeId, isNull);
+        expect(session.playing, isFalse);
+        expect(players.where((player) => !player.disposed), hasLength(1));
+        await tester.pump(const Duration(seconds: 1));
+        expect(resolved, [1, 2, 3]);
+        session.release('background');
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump();
+        expect(session.playing, isTrue);
+        expect(resolved, [1, 2, 3, 3]);
+        expect(engine.preloadedEpisodeId, sampleEpisodes[2].id);
+      } finally {
+        // Dispose timers before testWidgets verifies its timer invariants.
         await session.close();
         session.dispose();
         app.repository.dispose();
         app.dispose();
-      });
-      await session.initialize();
-      await tester.pump(const Duration(seconds: 1));
-      await tester.pump();
-      expect(resolved, [1, 2]);
-      expect(engine.preloadedEpisodeId, sampleEpisodes[1].id);
-      expect(players[1].opened, ['/2.mp4']);
-      expect(players[1].state.value.playing, isFalse);
-      await session.next();
-      expect(resolved, [1, 2]);
-      expect(engine.activeEngine, same(players[1]));
-      expect(players[1].opened, ['/2.mp4']);
-      expect(session.playing, isTrue);
-      await tester.pump(const Duration(seconds: 1));
-      await tester.pump();
-      expect(engine.preloadedEpisodeId, sampleEpisodes[2].id);
-      session.hold('background');
-      await tester.pump();
-      expect(engine.preloadedEpisodeId, isNull);
-      expect(session.playing, isFalse);
-      expect(players.where((player) => !player.disposed), hasLength(1));
-      await tester.pump(const Duration(seconds: 1));
-      expect(resolved, [1, 2, 3]);
-      session.release('background');
-      await tester.pump();
-      await tester.pump(const Duration(seconds: 1));
-      await tester.pump();
-      expect(session.playing, isTrue);
-      expect(resolved, [1, 2, 3, 3]);
-      expect(engine.preloadedEpisodeId, sampleEpisodes[2].id);
+      }
     },
   );
 }

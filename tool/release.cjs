@@ -42,7 +42,7 @@ function collectApks(version, source, destination, flavor) {
   if (!androidFlavors.includes(flavor)) throw new Error('APK flavor must be phone or tv.');
   fs.mkdirSync(destination, { recursive: true });
   for (const abi of androidAbis) {
-    const input = path.join(source, `app-${flavor}-${abi}-release.apk`);
+    const input = path.join(source, `app-${abi}-${flavor}-release.apk`);
     if (!fs.existsSync(input) || !fs.statSync(input).isFile() || fs.statSync(input).size === 0) {
       throw new Error(`Missing or empty APK for ${flavor}/${abi}.`);
     }

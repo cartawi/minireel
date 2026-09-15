@@ -43,7 +43,7 @@ flutter build apk --release --flavor tv --split-per-abi
 
 Flutter 3.41.9 的 Release 打包命令需要保留默认的 Pub 步骤，以按发布模式重新生成插件注册文件、排除仅用于开发的 `integration_test` 插件。这里不要添加 `--no-pub`，否则前面的依赖获取或测试可能留下包含测试插件的注册文件，导致 Java 编译报 `IntegrationTestPlugin` 找不到。静态检查和单元测试可以继续使用 `--no-pub`。
 
-安装包位于 `build/app/outputs/flutter-apk/`，文件名为 `app-<flavor>-<abi>-release.apk`。`phone` 和 `tv` 各面向 `arm64-v8a`、`armeabi-v7a` 和 `x86_64`。不加 `--split-per-abi` 可为指定 flavor 生成单个通用 APK。Android 运行时也需指定 `--flavor phone` 或 `--flavor tv`。
+安装包位于 `build/app/outputs/flutter-apk/`，文件名为 `app-<abi>-<flavor>-release.apk`。`phone` 和 `tv` 各面向 `arm64-v8a`、`armeabi-v7a` 和 `x86_64`。不加 `--split-per-abi` 可为指定 flavor 生成单个通用 APK。Android 运行时也需指定 `--flavor phone` 或 `--flavor tv`。
 
 **Android Release 构建必须配置正式签名，缺少时会直接失败。** CI 从 GitHub Secrets 还原签名文件，本地可设置 `ANDROID_KEYSTORE_PATH`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS` 和 `ANDROID_KEY_PASSWORD`，或在被 Git 忽略的 `android/key.properties` 中填写 `storeFile`、`storePassword`、`keyAlias`、`keyPassword`。`storeFile` 的相对路径以 `android/` 为基准。Debug 构建继续使用开发签名。
 

@@ -131,7 +131,8 @@ jobs:
           keytool -exportcert -keystore "$ANDROID_KEYSTORE_PATH" -alias "$ANDROID_KEY_ALIAS" -storepass:env ANDROID_KEYSTORE_PASSWORD -file "$RUNNER_TEMP/minireel-signing.der"
           expected_cert=$(sha256sum "$RUNNER_TEMP/minireel-signing.der" | cut -d ' ' -f 1)
           for abi in arm64-v8a armeabi-v7a x86_64; do
-            apk="build/app/outputs/flutter-apk/app-${ANDROID_FLAVOR}-${abi}-release.apk"
+            apk="build/app/outputs/flutter-apk/app-${abi}-${ANDROID_FLAVOR}-release.apk"
+            test -s "$apk" || { echo "Missing APK: $apk"; ls -l build/app/outputs/flutter-apk; exit 1; }
             cert=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
             test "$cert" = "$expected_cert" || { echo "Signing certificate mismatch: $ANDROID_FLAVOR/$abi"; exit 1; }
           done

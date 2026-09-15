@@ -572,7 +572,6 @@ class TVFocusTraversalPolicy extends FocusTraversalPolicy {
       final first = TVFocusRegistry.get('searchHistoryFirst');
       final rest = TVFocusRegistry.getMulti('searchHistory');
       final all = [...(first != null ? [first] : <FocusNode>[]), ...rest];
-      print('[TV-History] dir=$direction role=$currentRole all=${all.length} cur=${currentNode.debugLabel} last=${all.lastOrNull?.debugLabel} isLast=${currentNode == all.lastOrNull}');
       if (all.isNotEmpty && currentNode == all.last) {
         return null; // 触发抖动
       }

@@ -143,7 +143,6 @@ class _TVSearchScreenState extends State<TVSearchScreen> {
       final key = event.logicalKey;
       if (app.remoteKeyMap.matches(RemoteAction.down, key)) {
         final firstHistory = TVFocusRegistry.get('searchHistoryFirst');
-        print('[TV-Search-Down] firstHistory=${firstHistory?.debugLabel} rect=${firstHistory?.rect}');
         if (firstHistory != null && firstHistory.rect.width > 0) {
           _focusNode.unfocus();
           firstHistory.requestFocus();

@@ -8,6 +8,7 @@ import '../../app/theme.dart';
 import '../../data/repositories/drama_repository.dart';
 import '../../domain/models/drama.dart';
 import '../../domain/models/catalog_order.dart';
+import '../shared/drama_metadata.dart';
 import '../detail/detail_sheet.dart';
 import '../shared/widgets.dart';
 import 'tv_focus.dart';
@@ -363,6 +364,15 @@ class _TVLibraryScreenState extends State<TVLibraryScreen> {
                               child: DramaCard(
                                 drama: drama,
                                 favorite: app.isFavorite(drama.id),
+                                footer: sortMetric(drama, _order) == null
+                                    ? null
+                                    : Text(
+                                        sortMetric(drama, _order)!,
+                                        style: TextStyle(
+                                          color: context.muted,
+                                          fontSize: 11,
+                                        ),
+                                      ),
                                 aspectRatio: [
                                   0.66,
                                   0.72,

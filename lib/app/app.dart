@@ -215,22 +215,22 @@ class _AppShellState extends State<_AppShell> {
         systemNavigationBarContrastEnforced: false,
       ),
       child: Scaffold(
-        body: SafeArea(
-          bottom: false,
-          child: isAndroidTV
-              ? const TVAppShell()
-              : (isWindowsDesktop
-                  ? Row(
-                      children: [
-                        DesktopNavigation(
-                          selected: _tab,
-                          onSelect: (tab) => setState(() => _tab = tab),
-                        ),
-                        Expanded(child: content),
-                      ],
-                    )
-                  : content),
-        ),
+        body: isAndroidTV
+            ? const TVAppShell()
+            : SafeArea(
+                bottom: false,
+                child: isWindowsDesktop
+                    ? Row(
+                        children: [
+                          DesktopNavigation(
+                            selected: _tab,
+                            onSelect: (tab) => setState(() => _tab = tab),
+                          ),
+                          Expanded(child: content),
+                        ],
+                      )
+                    : content,
+              ),
         bottomNavigationBar: isAndroidTV || isWindowsDesktop ? null : Container(
                 decoration: BoxDecoration(
                   color: context.colors.surface,

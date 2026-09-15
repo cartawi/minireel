@@ -9,6 +9,7 @@ import '../shared/widgets.dart';
 import 'tv_focus.dart';
 import 'tv_library_screen.dart';
 import 'tv_mine_screen.dart';
+import 'tv_rankings_screen.dart';
 import 'tv_player_screen.dart';
 import 'tv_settings_screen.dart';
 
@@ -97,6 +98,7 @@ class _TVAppShellState extends State<TVAppShell> {
   /// 根据当前 tab 设置内容区入口节点并把焦点收到内容区。
   ///
   /// - 短剧库：入口 = 搜索框（[_searchFocus]）
+  /// - 热播榜：入口 = 左侧首个榜单类型节点（角色 `rankingsTypeFirst`）
   /// - 我的：入口 = segment「收藏」节点（角色 `mineEntry`）
   /// - 设置：入口 = 首个设置项节点（角色 `settingsEntry`）
   ///
@@ -109,12 +111,19 @@ class _TVAppShellState extends State<TVAppShell> {
       _searchFocus.requestFocus();
       return;
     }
-    final role = tab == 1 ? 'mineEntry' : 'settingsEntry';
-    final entry = TVFocusRegistry.get(role);
-    if (entry != null && entry.rect.width > 0) {
-      contentEntryFocusNode = entry;
-      entry.requestFocus();
-      return;
+    final role = switch (tab) {
+      1 => 'rankingsTypeFirst',
+      2 => 'mineEntry',
+      3 => 'settingsEntry',
+      _ => null,
+    };
+    if (role != null) {
+      final entry = TVFocusRegistry.get(role);
+      if (entry != null && entry.rect.width > 0) {
+        contentEntryFocusNode = entry;
+        entry.requestFocus();
+        return;
+      }
     }
     // 兜底：直接请求内容区 scope
     contentEntryFocusNode = _contentScope;
@@ -157,6 +166,7 @@ class _TVAppShellState extends State<TVAppShell> {
                       index: _tab,
                       children: [
                         TVLibraryScreen(onPlay: _play, searchFocus: _searchFocus),
+                        TVRankingsScreen(onPlay: _play),
                         TVMineScreen(
                           onPlay: _play,
                           onExplore: () => _selectTab(0),
@@ -208,9 +218,11 @@ class _TVNavigation extends StatelessWidget {
         const SizedBox(height: 32),
         _destination(context, 0, '短剧库', Icons.movie_outlined, Icons.movie_rounded),
         const SizedBox(height: 10),
-        _destination(context, 1, '我的', Icons.person_outline_rounded, Icons.person_rounded),
+        _destination(context, 1, '热播榜', Icons.emoji_events_outlined, Icons.emoji_events_rounded),
+        const SizedBox(height: 10),
+        _destination(context, 2, '我的', Icons.person_outline_rounded, Icons.person_rounded),
         const Spacer(),
-        _destination(context, 2, '设置', Icons.tune_rounded, Icons.tune_rounded),
+        _destination(context, 3, '设置', Icons.tune_rounded, Icons.tune_rounded),
         const SizedBox(height: 28),
       ],
     ),

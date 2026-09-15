@@ -4,6 +4,15 @@ import 'package:flutter/services.dart';
 bool get isWindowsDesktop =>
     !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
+bool get isMacOSDesktop =>
+    !kIsWeb && defaultTargetPlatform == TargetPlatform.macOS;
+
+/// 桌面平台统称（Windows + macOS）：用于 UI 分发时复用同一套桌面交互。
+/// 注意：Mac 版有专属 UI（lib/features/mac/），不直接复用 Windows 的
+/// DesktopNavigation/DesktopPlayerScreen，但窗口管理、设备控制等底层
+/// 行为可共享此判断。
+bool get isDesktopApp => isWindowsDesktop || isMacOSDesktop;
+
 bool _tvMode = false;
 
 /// 调试用：强制 TV 模式（仅 debug 生效）。在电脑上按 F9 切换，

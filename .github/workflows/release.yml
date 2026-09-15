@@ -109,6 +109,9 @@ jobs:
           java-version: '17'
           cache: gradle
       - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+        with:
+          # The legacy "tools" package in the action's defaults is unavailable.
+          packages: 'platform-tools'
       - name: Install Android build tools
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2

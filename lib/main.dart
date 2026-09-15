@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'app/app.dart';
 import 'app/app_controller.dart';
@@ -33,13 +34,31 @@ Future<void> main() async {
     ], await rootBundle.loadString('License'));
   });
   initDebugTvFromEnv();
-  if (Platform.isWindows) await DesktopWindow.instance.initialize();
+  if (Platform.isWindows) {
+    await DesktopWindow.instance.initialize();
+  } else if (Platform.isMacOS) {
+    await _initializeMacWindow();
+  }
   MediaKit.ensureInitialized();
   await detectAndroidTv();
   if (Platform.isAndroid && !isAndroidTV) {
     unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
   }
   runApp(const MiniReelBootstrap());
+}
+
+Future<void> _initializeMacWindow() async {
+  await windowManager.ensureInitialized();
+  await windowManager.waitUntilReadyToShow(
+    WindowOptions(
+      size: const Size(1180, 780),
+      minimumSize: const Size(860, 560),
+      titleBarStyle: TitleBarStyle.normal,
+      title: 'MiniReel',
+      center: true,
+    ),
+  );
+  await windowManager.show();
 }
 
 class MiniReelBootstrap extends StatefulWidget {

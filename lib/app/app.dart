@@ -17,6 +17,8 @@ import '../features/settings/settings_screen.dart';
 import '../features/tv/tv_shell.dart';
 import '../features/tv/tv_player_screen.dart';
 import '../features/tv/tv_debug_pad.dart';
+import '../features/mac/mac_shell.dart';
+import '../features/mac/mac_player_screen.dart';
 import 'app_controller.dart';
 import 'theme.dart';
 import 'platform.dart';
@@ -136,9 +138,17 @@ class _AppShellState extends State<_AppShell> {
         PageRouteBuilder<void>(
           pageBuilder: (_, _, _) => isAndroidTV
               ? TVPlayerScreen(drama: drama, initialEpisode: episode)
-              : (isWindowsDesktop
-                  ? DesktopPlayerScreen(drama: drama, initialEpisode: episode)
-                  : PlayerScreen(drama: drama, initialEpisode: episode)),
+              : (isMacOSDesktop
+                  ? MacPlayerScreen(drama: drama, initialEpisode: episode)
+                  : (isWindowsDesktop
+                      ? DesktopPlayerScreen(
+                          drama: drama,
+                          initialEpisode: episode,
+                        )
+                      : PlayerScreen(
+                          drama: drama,
+                          initialEpisode: episode,
+                        ))),
           transitionDuration: const Duration(milliseconds: 240),
           reverseTransitionDuration: const Duration(milliseconds: 200),
           transitionsBuilder: (_, animation, _, child) => FadeTransition(
@@ -217,6 +227,8 @@ class _AppShellState extends State<_AppShell> {
       child: Scaffold(
         body: isAndroidTV
             ? const TVAppShell()
+            : isMacOSDesktop
+            ? const MacAppShell()
             : SafeArea(
                 bottom: false,
                 child: isWindowsDesktop
@@ -231,7 +243,9 @@ class _AppShellState extends State<_AppShell> {
                       )
                     : content,
               ),
-        bottomNavigationBar: isAndroidTV || isWindowsDesktop ? null : Container(
+        bottomNavigationBar: isAndroidTV || isWindowsDesktop || isMacOSDesktop
+            ? null
+            : Container(
                 decoration: BoxDecoration(
                   color: context.colors.surface,
                   border: Border(

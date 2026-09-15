@@ -11,9 +11,15 @@ pluginManagement {
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
 
     repositories {
-        maven { url = uri("https://maven.aliyun.com/repository/google") }
-        maven { url = uri("https://maven.aliyun.com/repository/public") }
-        maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
+        // 阿里云镜像只服务国内本地开发。
+        // CI runner 在境外，走公网 google()/mavenCentral() 更快；而镜像一旦返回 5xx，
+        // Gradle 会直接判定解析失败、不会自动回退到后面的仓库（CI 上已因此挂过 v0.2.0），
+        // 所以这里在 CI 环境跳过镜像，只保留官方源。
+        if (System.getenv("CI") == null) {
+            maven { url = uri("https://maven.aliyun.com/repository/google") }
+            maven { url = uri("https://maven.aliyun.com/repository/public") }
+            maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
+        }
         google()
         mavenCentral()
         gradlePluginPortal()

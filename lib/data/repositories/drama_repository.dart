@@ -215,7 +215,14 @@ final class DramaRepository extends ChangeNotifier {
   Future<void> loadInitial() => refresh();
   Future<void> refreshNewItems() => refresh();
 
-  Future<void> refresh() async {
+  Future<void> refresh() => _refresh();
+
+  /// Manual update checks the head and continues three saved pages per feed.
+  /// Keep startup refresh light and retain the same cancellation/persistence
+  /// boundary for the entire manual update.
+  Future<void> updateCatalog() => _refresh(continueCatalog: true);
+
+  Future<void> _refresh({bool continueCatalog = false}) async {
     if (refreshing) return;
     final generation = ++_generation;
     _catalogToken?.cancel();
@@ -246,6 +253,24 @@ final class DramaRepository extends ChangeNotifier {
             _fetchPage(source, channel, 1, token, generation, refresh: true),
     ]);
     if (_disposed || generation != _generation) return;
+    if (continueCatalog) {
+      for (var batch = 0; batch < 3; batch++) {
+        await Future.wait([
+          for (final source in registry.all)
+            for (final channel in _channels(source))
+              if (!_exhausted.contains('${source.id}:${channel.name}') &&
+                  !errors.containsKey('${source.id}:${channel.name}'))
+                _fetchPage(
+                  source,
+                  channel,
+                  (_pages['${source.id}:${channel.name}'] ?? 0) + 1,
+                  token,
+                  generation,
+                ),
+        ]);
+        if (_disposed || generation != _generation) return;
+      }
+    }
     refreshing = false;
     if (_successfulPages > successfulBefore) {
       lastRefresh = DateTime.now();

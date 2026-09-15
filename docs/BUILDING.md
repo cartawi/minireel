@@ -37,12 +37,13 @@ Android debug 构建禁用 Impeller，使用 Skia/OpenGL，以避开部分模拟
 ```sh
 flutter analyze --no-pub
 flutter test test --no-pub
-flutter build apk --release --split-per-abi
+flutter build apk --release --flavor phone --split-per-abi
+flutter build apk --release --flavor tv --split-per-abi
 ```
 
 Flutter 3.41.9 的 Release 打包命令需要保留默认的 Pub 步骤，以按发布模式重新生成插件注册文件、排除仅用于开发的 `integration_test` 插件。这里不要添加 `--no-pub`，否则前面的依赖获取或测试可能留下包含测试插件的注册文件，导致 Java 编译报 `IntegrationTestPlugin` 找不到。静态检查和单元测试可以继续使用 `--no-pub`。
 
-安装包位于 `build/app/outputs/flutter-apk/`，分别面向 `arm64-v8a`、`armeabi-v7a` 和 `x86_64`。不加 `--split-per-abi` 可生成单个通用 APK。
+安装包位于 `build/app/outputs/flutter-apk/`，文件名为 `app-<flavor>-<abi>-release.apk`。`phone` 和 `tv` 各面向 `arm64-v8a`、`armeabi-v7a` 和 `x86_64`。不加 `--split-per-abi` 可为指定 flavor 生成单个通用 APK。Android 运行时也需指定 `--flavor phone` 或 `--flavor tv`。
 
 **Android Release 构建必须配置正式签名，缺少时会直接失败。** CI 从 GitHub Secrets 还原签名文件，本地可设置 `ANDROID_KEYSTORE_PATH`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS` 和 `ANDROID_KEY_PASSWORD`，或在被 Git 忽略的 `android/key.properties` 中填写 `storeFile`、`storePassword`、`keyAlias`、`keyPassword`。`storeFile` 的相对路径以 `android/` 为基准。Debug 构建继续使用开发签名。
 
@@ -77,7 +78,7 @@ Windows 同样先执行静态检查和 `flutter test test --no-pub`，再执行�
 
 后续版本应继续使用同一签名。首次从开发签名包切换到正式签名包时，需要卸载原开发包再安装。
 
-工作流并行构建 Windows x64 安装程序和 Android 三种 ABI APK，验证 APK 签名后上传中间构建产物。两端都成功后，发布任务创建草稿 Release、上传四个安装文件和 `SHA256SUMS.txt`，最后公开 Release。无需额外配置发布 token，任务使用仅在发布 job 授予写权限的 `GITHUB_TOKEN`。
+工作流并行构建 Windows x64 安装程序、Android 手机版和 TV 版；两个 Android flavor 各构建三种 ABI APK，使用相同的签名 Secrets，并逐个验证签名。全部成功后，发布任务创建草稿 Release、上传七个安装文件和 `SHA256SUMS.txt`，最后公开 Release。手机版沿用 `MiniReel-<版本>-android-<abi>.apk`，TV 版使用 `MiniReel-<版本>-android-tv-<abi>.apk`，产物收集和校验均要求两个版本齐全。无需额外配置发布 token，任务使用仅在发布 job 授予写权限的 `GITHUB_TOKEN`。
 
 ```sh
 git tag -a v0.1.0 -m "Release v0.1.0"
@@ -123,6 +124,8 @@ git push origin v0.1.0
 数据流为 `SourceAdapter → DramaRepository → PlaybackSession → media_kit`。红果剧库与详情优先使用 App API，失败时回退网页；播放依次尝试 App、网页和旧备用接口。实际媒体加载失败也会沿此顺序恢复并保留进度，App 路径最多自动恢复三次，网页与旧备用路径最多两次。下一集预解析命中后若媒体失效，会先额外重新解析当前路径一次，再进入上述回退流程。
 
 App 的地址、User-Agent、版本及通用参数分别由 `appBaseUrl`、`appUserAgent`、`appParameters` 和 `appHeaders` 配置。缺少 App 地址时保留网页模式。设备标识在首次请求时生成并保存在 SQLite；各分类的 App 游标与网页页码独立维护，和剧库数据一起事务写入。刷新扫描最多三页头部并保留历史续拉位置，清理剧库缓存会清除游标与详情缓存，保留设备标识、收藏和观看记录。默认 App 分类为真人剧、漫剧与 AI 剧，动漫来自网页兜底或已有缓存。
+
+设置中的「更新剧库」在检查头部新内容后，每个分类从保存的位置继续加载最多三页历史目录；到末页或该分类请求失败时停止续拉。新增内容和分页位置逐页保存，下一次手动更新接着加载，并提示本次新增数量。启动时仍只做轻量刷新。目录已加载完、返回内容重复或请求失败时，数量不保证增长。
 
 P1 的联网搜索与榜单通过可选 `RemoteSearchSource`、`RankingSource` 能力接入。两者使用网页数据，缓存五分钟，并合并相同请求；搜索词限制为 1–80 字符。榜单同时解析内联与后续脚本属性中的内容，校验榜单、页码和真实名次，不补造连续排名。搜索与榜单结果合并进 SQLite 剧库，缺失字段不会抹掉已有封面、集数和元数据。
 

@@ -231,13 +231,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onTap: app.repository.refreshing
                         ? null
                         : () async {
-                            await app.repository.refresh();
+                            final before = app.repository.catalog.length;
+                            await app.repository.updateCatalog();
                             if (context.mounted) {
+                              final added =
+                                  app.repository.catalog.length - before;
+                              final result = added > 0
+                                  ? '本次新增 $added 部短剧'
+                                  : '本次未发现新增短剧';
                               showToast(
                                 context,
                                 app.repository.errors.isEmpty
-                                    ? '剧库已更新'
-                                    : '部分内容未能更新，已保留原有短剧',
+                                    ? result
+                                    : '$result，部分内容未能更新，已保留原有短剧',
                               );
                             }
                           },

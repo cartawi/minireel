@@ -136,6 +136,108 @@ Map<String, dynamic> _media() => {
 
 void main() {
   test(
+    'manual update resumes saved tails, persists progress and stops at the end',
+    () async {
+      final store = _StateStore();
+      final client = _Client()
+        ..respond = (_, body) async {
+          final offset = body['offset'] as int;
+          final genre = (body['select_items'] as Map)['genre'][0] as String;
+          final base = {
+            'short_play': 1000,
+            'comic_series': 2000,
+            'ai_series': 3000,
+          }[genre]!;
+          return {
+            'data': {
+              'video_data': [
+                {'series_id': '${base + offset}', 'series_title': 'fixture'},
+              ],
+              'next_offset': offset + 18,
+              'session_id': 'session-$genre',
+              'has_more': offset < 90,
+            },
+          };
+        };
+      DramaRepository repository() => DramaRepository(
+        SourceRegistry([HongguoAdapter(_config, client, store: store)]),
+        store,
+      );
+      List<int> offsets() => client.calls
+          .where(
+            (call) =>
+                (call.body['select_items'] as Map)['genre'][0] == 'short_play',
+          )
+          .map((call) => call.body['offset'] as int)
+          .toList();
+      final first = repository();
+      addTearDown(first.dispose);
+      await first.loadInitial();
+      await first.loadMore();
+      client.calls.clear();
+      await first.updateCatalog();
+      expect(offsets(), [0, 36, 54, 72]);
+      expect(first.catalog, hasLength(15));
+      expect(store.catalog, hasLength(15));
+      expect(first.refreshing, false);
+      final second = repository();
+      addTearDown(second.dispose);
+      await second.loadCache();
+      client.calls.clear();
+      await second.updateCatalog();
+      expect(offsets(), [0, 90]);
+      expect(second.catalog, hasLength(18));
+      expect(second.hasMore, false);
+      client.calls.clear();
+      await second.updateCatalog();
+      expect(offsets(), [0]);
+      expect(second.catalog, hasLength(18));
+    },
+  );
+
+  test(
+    'manual update retains successful pages when continuation fails',
+    () async {
+      final store = _StateStore();
+      final client = _Client()
+        ..respond = (_, body) async {
+          final offset = body['offset'] as int;
+          if (offset >= 36) throw const AppException('offline');
+          final genre = (body['select_items'] as Map)['genre'][0] as String;
+          final base = {
+            'short_play': 1000,
+            'comic_series': 2000,
+            'ai_series': 3000,
+          }[genre]!;
+          return {
+            'data': {
+              'video_data': [
+                {'series_id': '${base + offset}', 'series_title': 'fixture'},
+              ],
+              'next_offset': offset + 18,
+              'has_more': true,
+            },
+          };
+        };
+      final repo = DramaRepository(
+        SourceRegistry([HongguoAdapter(_config, client, store: store)]),
+        store,
+      );
+      addTearDown(repo.dispose);
+      await repo.loadInitial();
+      await repo.updateCatalog();
+      expect(repo.catalog, hasLength(6));
+      expect(store.catalog, hasLength(6));
+      expect(repo.errors.keys, contains('hongguo:real'));
+      expect(
+        (store.state['catalog:hongguo:real']!['cursor'] as Map)['offset'],
+        36,
+      );
+      expect(repo.refreshing, false);
+    },
+  );
+
+  test(
     'catalog refresh preserves tail and restart continues each feed with the same device',
     () async {
       final store = _StateStore();

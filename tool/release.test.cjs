@@ -24,15 +24,23 @@ test('release assembly rejects missing assets and writes verifiable checksums', 
   const source = path.join(directory, 'apks');
   const release = path.join(directory, 'release');
   fs.mkdirSync(source);
-  for (const abi of ['arm64-v8a', 'armeabi-v7a', 'x86_64']) {
-    fs.writeFileSync(path.join(source, `app-${abi}-release.apk`), `signed ${abi}`);
+  for (const flavor of ['phone', 'tv']) {
+    for (const abi of ['arm64-v8a', 'armeabi-v7a', 'x86_64']) {
+      fs.writeFileSync(path.join(source, `app-${flavor}-${abi}-release.apk`), `signed ${flavor} ${abi}`);
+    }
   }
-  collectApks('1.2.3', source, release);
+  collectApks('1.2.3', source, release, 'phone');
   assert.throws(() => checksums('1.2.3', release), /exactly/);
   fs.writeFileSync(path.join(release, 'MiniReel-1.2.3-windows-x64-setup.exe'), 'installer');
+  assert.throws(() => checksums('1.2.3', release), /exactly/);
+  collectApks('1.2.3', source, release, 'tv');
+  for (const abi of ['arm64-v8a', 'armeabi-v7a', 'x86_64']) {
+    assert.equal(fs.readFileSync(path.join(release, `MiniReel-1.2.3-android-${abi}.apk`), 'utf8'), `signed phone ${abi}`);
+    assert.equal(fs.readFileSync(path.join(release, `MiniReel-1.2.3-android-tv-${abi}.apk`), 'utf8'), `signed tv ${abi}`);
+  }
   checksums('1.2.3', release);
   const entries = fs.readFileSync(path.join(release, 'SHA256SUMS.txt'), 'utf8').trim().split('\n');
-  assert.equal(entries.length, 4);
+  assert.equal(entries.length, 7);
   assert.deepEqual(entries.map(line => line.split('  ')[1]), expectedAssets('1.2.3'));
   for (const line of entries) {
     const [digest, name] = line.split('  ');
@@ -40,6 +48,20 @@ test('release assembly rejects missing assets and writes verifiable checksums', 
   }
   fs.writeFileSync(path.join(release, 'unexpected.txt'), 'extra');
   assert.throws(() => checksums('1.2.3', release), /exactly/);
+});
+
+test('APK collection rejects missing, empty and unspecified flavors', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'minireel-apk-test-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const destination = path.join(directory, 'release');
+  for (const flavor of [undefined, '', 'desktop', '../tv']) {
+    assert.throws(() => collectApks('1.2.3', directory, destination, flavor), /flavor/);
+  }
+  for (const flavor of ['phone', 'tv']) {
+    assert.throws(() => collectApks('1.2.3', directory, destination, flavor), /Missing or empty/);
+    fs.writeFileSync(path.join(directory, `app-${flavor}-arm64-v8a-release.apk`), '');
+    assert.throws(() => collectApks('1.2.3', directory, destination, flavor), /Missing or empty/);
+  }
 });
 
 test('signing restore fails closed on missing or malformed secrets and never replaces a key', t => {

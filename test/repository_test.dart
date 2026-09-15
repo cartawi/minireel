@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:minireel/data/repositories/drama_repository.dart';
 import 'package:minireel/data/sources/source_adapter.dart';
@@ -6,6 +8,34 @@ import 'package:minireel/domain/models/drama.dart';
 import 'support/fakes.dart';
 
 void main() {
+  test(
+    'clearing cache during manual continuation ignores late pages',
+    () async {
+      final store = MemoryStore();
+      final started = Completer<void>();
+      final pending = Completer<List<Drama>>();
+      final source = FakeSource()
+        ..catalogLoader = (channel, page) async {
+          if (channel != DramaChannel.real) return [];
+          if (page == 1) return [sampleDrama, sampleDrama];
+          started.complete();
+          return pending.future;
+        };
+      final repo = DramaRepository(SourceRegistry([source]), store);
+      addTearDown(repo.dispose);
+      final update = repo.updateCatalog();
+      await started.future;
+      expect(repo.refreshing, true);
+      await repo.clearCache();
+      pending.complete([sampleDrama]);
+      await update;
+      expect(repo.catalog, isEmpty);
+      expect(store.catalog, isEmpty);
+      expect(repo.lastRefresh, isNull);
+      expect(repo.refreshing, false);
+    },
+  );
+
   test(
     'a failed refresh keeps cached catalog and independent favorites',
     () async {

@@ -23,20 +23,30 @@ function metadata(tag, buildNumber) {
   };
 }
 
+const androidAbis = ['arm64-v8a', 'armeabi-v7a', 'x86_64'];
+const androidFlavors = ['phone', 'tv'];
+
+function apkAsset(version, abi, flavor) {
+  return `MiniReel-${version}-android${flavor === 'tv' ? '-tv' : ''}-${abi}.apk`;
+}
+
 function expectedAssets(version) {
   return [
     `MiniReel-${version}-windows-x64-setup.exe`,
-    ...['arm64-v8a', 'armeabi-v7a', 'x86_64'].map(abi => `MiniReel-${version}-android-${abi}.apk`),
+    ...androidFlavors.flatMap(flavor => androidAbis.map(abi => apkAsset(version, abi, flavor))),
   ].sort();
 }
 
-function collectApks(version, source, destination) {
+function collectApks(version, source, destination, flavor) {
   metadata(`v${version}`, 1);
+  if (!androidFlavors.includes(flavor)) throw new Error('APK flavor must be phone or tv.');
   fs.mkdirSync(destination, { recursive: true });
-  for (const abi of ['arm64-v8a', 'armeabi-v7a', 'x86_64']) {
-    const input = path.join(source, `app-${abi}-release.apk`);
-    if (!fs.statSync(input).isFile() || fs.statSync(input).size === 0) throw new Error(`Missing APK for ${abi}.`);
-    fs.copyFileSync(input, path.join(destination, `MiniReel-${version}-android-${abi}.apk`));
+  for (const abi of androidAbis) {
+    const input = path.join(source, `app-${flavor}-${abi}-release.apk`);
+    if (!fs.existsSync(input) || !fs.statSync(input).isFile() || fs.statSync(input).size === 0) {
+      throw new Error(`Missing or empty APK for ${flavor}/${abi}.`);
+    }
+    fs.copyFileSync(input, path.join(destination, apkAsset(version, abi, flavor)));
   }
 }
 
@@ -45,7 +55,7 @@ function checksums(version, directory) {
   const expected = expectedAssets(version);
   const actual = fs.readdirSync(directory).filter(name => name !== 'SHA256SUMS.txt').sort();
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error(`Release must contain exactly the Windows installer and three ABI APKs. Found: ${actual.join(', ')}`);
+    throw new Error(`Release must contain exactly the Windows installer and six APKs (three phone, three TV). Found: ${actual.join(', ')}`);
   }
   const lines = expected.map(name => {
     const bytes = fs.readFileSync(path.join(directory, name));

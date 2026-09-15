@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import '../../app/platform.dart';
 import 'tv_focus.dart';
 
-/// 调试用虚拟遥控器悬浮面板（仅 debug 生效，release 完全不渲染）。
+/// TV 模式下的调试用虚拟遥控器悬浮面板（仅 debug 生效）。
 ///
 /// 用途：在安卓模拟器（如 MuMuPlayer）或桌面调试 TV UI 时，不依赖模拟器
 /// 键盘映射，直接在 app 内点方向键移动焦点、OK 激活当前焦点。
@@ -28,8 +28,8 @@ class _TVDebugPadState extends State<TVDebugPad> {
 
   @override
   Widget build(BuildContext context) {
-    // release 构建直接返回 child，不叠加任何调试 UI
-    if (!kDebugMode) return widget.child;
+    // 仅 TV 调试界面显示遥控器，普通桌面和手机版不显示。
+    if (!kDebugMode || !isAndroidTV) return widget.child;
 
     final media = MediaQuery.of(context);
     _screenSize = media.size;

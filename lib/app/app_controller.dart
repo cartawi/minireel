@@ -6,6 +6,7 @@ import '../data/local/app_store.dart';
 import '../data/repositories/drama_repository.dart';
 import '../domain/models/drama.dart';
 import '../domain/models/preferences.dart';
+import '../domain/models/remote_key_map.dart';
 import '../domain/models/watch_record.dart';
 
 final class AppController extends ChangeNotifier {
@@ -14,6 +15,9 @@ final class AppController extends ChangeNotifier {
   final DramaRepository repository;
 
   Preferences preferences = const Preferences();
+  /// 当前生效的遥控器按键映射（自定义优先，否则默认）。
+  RemoteKeyMap get remoteKeyMap =>
+      preferences.remoteKeyMap ?? RemoteKeyMap.defaults();
   List<Drama> favorites = [];
   List<WatchRecord> history = [];
   List<String> searches = [];

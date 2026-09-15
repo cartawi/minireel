@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import '../../app/theme.dart';
 import '../../app/platform.dart';
 import '../../domain/models/drama.dart';
+import '../tv/tv_focus.dart';
 
 int dramaColumns(double width) => isWindowsDesktop
     ? ((width - 28) / 190).floor().clamp(2, 10)
+    : isAndroidTV
+    ? ((width - 28) / 175).floor().clamp(4, 8)
     : width >= 1100
     ? 5
     : width >= 800
@@ -74,9 +77,13 @@ class CoverImage extends StatelessWidget {
       ),
     );
     if (drama.coverUrl.isEmpty) return placeholder();
+    // TV/低端设备性能优化：按显示尺寸解码，避免把原图(可达 800×1200)整张
+    // 解码进内存。卡片显示宽约 175 逻辑像素，按 2x DPR 给 350 像素足够清晰，
+    // 内存占用降一个数量级，解码也更快。
     return Image.network(
       drama.coverUrl,
       fit: fit,
+      cacheWidth: 350,
       excludeFromSemantics: true,
       gaplessPlayback: true,
       errorBuilder: (_, _, _) => placeholder(),
@@ -97,6 +104,7 @@ class DramaCard extends StatelessWidget {
     this.selected = false,
     this.selecting = false,
     this.footer,
+    this.interactive = true,
   });
   final Drama drama;
   final VoidCallback onTap;
@@ -106,6 +114,9 @@ class DramaCard extends StatelessWidget {
   final bool selected;
   final bool selecting;
   final Widget? footer;
+  /// 是否响应触摸点击。TV 版由外层 TVFocusable 接管点击时设为 false，
+  /// InkWell 仅保留水波纹视觉，不再独立触发 onTap（避免双重点击）。
+  final bool interactive;
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -116,9 +127,9 @@ class DramaCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        onSecondaryTap: isWindowsDesktop ? onLongPress : null,
+        onTap: interactive ? onTap : null,
+        onLongPress: interactive ? onLongPress : null,
+        onSecondaryTap: interactive && isWindowsDesktop ? onLongPress : null,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -269,10 +280,12 @@ class EmptyState extends StatelessWidget {
     this.subtitle,
     this.action,
     this.onAction,
+    this.actionBuilder,
   });
   final IconData icon;
   final String title;
   final String? subtitle;
+  final Widget Function(String action, VoidCallback? onAction)? actionBuilder;
   final String? action;
   final VoidCallback? onAction;
   @override
@@ -315,7 +328,8 @@ class EmptyState extends StatelessWidget {
           ],
           if (action != null) ...[
             const SizedBox(height: 20),
-            FilledButton(onPressed: onAction, child: Text(action!)),
+            actionBuilder?.call(action!, onAction) ??
+                FilledButton(onPressed: onAction, child: Text(action!)),
           ],
         ],
       ),
@@ -328,7 +342,8 @@ Future<T?> showReelSheet<T>(
   required WidgetBuilder builder,
   bool dark = false,
 }) {
-  if (isWindowsDesktop) {
+  // TV 与桌面都走居中 Dialog（横屏大屏，底部 sheet 体验差）
+  if (isWindowsDesktop || isAndroidTV) {
     return showDialog<T>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: .5),
@@ -336,12 +351,15 @@ Future<T?> showReelSheet<T>(
         backgroundColor: dark ? const Color(0xFF171A22) : null,
         constraints: const BoxConstraints(maxWidth: 540),
         clipBehavior: Clip.antiAlias,
-        child: dark
-            ? Theme(
-                data: ReelTheme.make(Brightness.dark),
-                child: Builder(builder: builder),
-              )
-            : Builder(builder: builder),
+        child: FocusTraversalGroup(
+          policy: TVFocusTraversalPolicy(),
+          child: dark
+              ? Theme(
+                  data: ReelTheme.make(Brightness.dark),
+                  child: Builder(builder: builder),
+                )
+              : Builder(builder: builder),
+        ),
       ),
     );
   }
@@ -375,14 +393,15 @@ class SheetFrame extends StatelessWidget {
   final Widget? footer;
   final double maxHeight;
   @override
-  Widget build(BuildContext context) => SafeArea(
-    top: false,
-    child: ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * maxHeight,
-      ),
-      child: Padding(
-        padding: EdgeInsets.only(
+  Widget build(BuildContext context) => _SheetAutofocus(
+    child: SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * maxHeight,
+        ),
+        child: Padding(
+          padding: EdgeInsets.only(
           bottom: MediaQuery.viewInsetsOf(context).bottom,
         ),
         child: Column(
@@ -431,15 +450,7 @@ class SheetFrame extends StatelessWidget {
                       ],
                     ),
                   ),
-                  IconButton(
-                    tooltip: '关闭',
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: Icon(
-                      Icons.close_rounded,
-                      size: 20,
-                      color: context.muted,
-                    ),
-                  ),
+                  _CloseButton(),
                 ],
               ),
             ),
@@ -458,7 +469,81 @@ class SheetFrame extends StatelessWidget {
         ),
       ),
     ),
+    ),
   );
+}
+
+/// Sheet 右上角关闭按钮：TV 上用 TVFocusable 提供红框焦点 + 辉光，
+/// 手机/桌面上退化为普通 IconButton。
+class _CloseButton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    if (isAndroidTV) {
+      return TVFocusable(
+        radius: 10,
+        borderWidth: 2,
+        focusRole: 'sheetClose',
+        autofocus: true,
+        onTap: () => Navigator.of(context).pop(),
+        semanticLabel: '关闭',
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(
+            Icons.close_rounded,
+            size: 20,
+            color: context.muted,
+          ),
+        ),
+      );
+    }
+    return IconButton(
+      tooltip: '关闭',
+      onPressed: () => Navigator.of(context).pop(),
+      icon: Icon(
+        Icons.close_rounded,
+        size: 20,
+        color: context.muted,
+      ),
+    );
+  }
+}
+
+/// TV 上 sheet 打开时自动聚焦首个可遍历子节点（TVFocusable）。
+/// 手机/桌面无副作用。
+class _SheetAutofocus extends StatefulWidget {
+  const _SheetAutofocus({required this.child});
+  final Widget child;
+  @override
+  State<_SheetAutofocus> createState() => _SheetAutofocusState();
+}
+
+class _SheetAutofocusState extends State<_SheetAutofocus> {
+  @override
+  void initState() {
+    super.initState();
+    if (isAndroidTV) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          final scope = FocusScope.of(context);
+          scope.requestFocus();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            // 若已有节点持焦点（如某个 TVFocusable 设了 autofocus），保留它；
+            // 否则聚焦首个可遍历子节点。
+            final primary = FocusManager.instance.primaryFocus;
+            if (primary == null ||
+                primary == scope ||
+                !scope.children.any((n) => n.hasFocus)) {
+              scope.traversalChildren.firstOrNull?.requestFocus();
+            }
+          });
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 Future<T?> pickOption<T>(

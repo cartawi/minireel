@@ -330,6 +330,12 @@ final class PlaybackSession extends ChangeNotifier {
   }
 
   void _schedulePrefetch(int generation) {
+    if (!app.preferences.prefetchNextEpisode) {
+      if (_prefetchTimer?.isActive == true || _prefetchGeneration == generation) {
+        trimPreload();
+      }
+      return;
+    }
     if (!canNext ||
         !_current(generation) ||
         !_wantPlaying ||

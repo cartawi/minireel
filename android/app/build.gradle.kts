@@ -55,6 +55,17 @@ android {
         versionName = flutter.versionName
     }
 
+    flavorDimensions += "device"
+    productFlavors {
+        create("phone") {
+            dimension = "device"
+        }
+        create("tv") {
+            dimension = "device"
+            applicationIdSuffix = ".tv"
+        }
+    }
+
     signingConfigs {
         if (hasReleaseSigning) {
             create("release") {
